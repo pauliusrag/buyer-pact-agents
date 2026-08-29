@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from sye import __version__
 from sye.api.routes_campaigns import router as campaigns_router
+from sye.api.routes_demand import router as demand_router
 from sye.api.routes_demo import router as demo_router
 from sye.api.routes_runs import router as runs_router
 from sye.config import get_settings
@@ -48,6 +49,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    app.include_router(demand_router)
     app.include_router(demo_router)
     app.include_router(runs_router)
     app.include_router(campaigns_router)

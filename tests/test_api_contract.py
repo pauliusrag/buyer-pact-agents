@@ -187,3 +187,66 @@ def test_empty_scenario_is_rejected(client):
 
 def test_unknown_run_is_404(client):
     assert client.get("/api/v1/demo/runs/run_missing").status_code == 404
+
+
+# --------------------------------------------------------------------------- #
+# Demand front door — the endpoint a website calls on every submission
+# --------------------------------------------------------------------------- #
+DEMAND_BODY = {
+    "market": "SE",
+    "currency": "EUR",
+    "users": {
+        "anna": "I want a smart ring that tracks my sleep and HRV. No monthly subscription. Under €300.",
+        "ben": "Looking for a sleep tracking ring, works with my iPhone, at least a week of battery. Max €320.",
+        "cara": "A ring for sleep and recovery, I refuse to pay a subscription. Around €280.",
+        "eva": "Fitness band with GPS and heart rate for running, waterproof, around €200.",
+    },
+}
+
+
+def test_demand_grouping_returns_compatible_groups(client):
+    response = client.post("/api/v1/demand/group", json=DEMAND_BODY)
+    assert response.status_code == 200
+    body = response.json()
+
+    groups = {g["label"]: g for g in body["groups"]}
+    ring_group = next(g for g in body["groups"] if "anna" in g["member_user_ids"])
+    assert set(ring_group["member_user_ids"]) == {"anna", "ben", "cara"}
+    assert ring_group["size"] == 3
+    assert "subscription-free" in ring_group["label"]
+    assert ring_group["requirements"]
+    assert ring_group["explanation"]
+
+    # eva wants a different device and is grouped separately
+    assert any(g["member_user_ids"] == ["eva"] for g in body["groups"])
+    assert len(groups) == 2
+
+    # every member can be told why they are in the group
+    anna = next(m for m in ring_group["members"] if m["user_id"] == "anna")
+    assert anna["joined"] is True
+    assert anna["explanation"]
+    assert anna["inherited_requirements"] or anna["common_requirements"]
+
+    # and what we understood from their own words
+    parsed = {p["user_id"]: p for p in body["parsed"]}
+    assert parsed["anna"]["category"] == "wearable"
+    assert "subscription excluded" in parsed["anna"]["hard_requirements"]
+    assert parsed["anna"]["max_budget"] == 300.0
+
+
+def test_demand_grouping_needs_no_research_or_keys(client):
+    """The front door must answer on every page load, with no external calls."""
+    body = client.post("/api/v1/demand/group", json=DEMAND_BODY).json()
+    assert body["engine"] == "deterministic"
+    assert body["grouped_at"]
+
+
+def test_demand_grouping_accepts_the_other_user_shapes(client):
+    listed = client.post(
+        "/api/v1/demand/group",
+        json={"users": ["27 inch 1440p monitor with USB-C, max €320", "at least 27 inch QHD, €300"]},
+    )
+    assert listed.status_code == 200
+    assert listed.json()["groups"]
+
+    assert client.post("/api/v1/demand/group", json={"users": []}).status_code == 422

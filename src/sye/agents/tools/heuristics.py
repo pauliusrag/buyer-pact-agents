@@ -562,7 +562,7 @@ def _extract_wearable(text: str, constraints: list[RequirementConstraint]) -> No
         if not re.search(r"batter|charge|last|between charges", window):
             continue
         raw = match.group(1)
-        value = _WORD_NUMBERS.get(raw, None)
+        value = _WORD_NUMBERS.get(raw)
         if value is None:
             try:
                 value = int(raw)
