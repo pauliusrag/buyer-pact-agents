@@ -244,7 +244,9 @@ def test_demand_grouping_needs_no_research_or_keys(client):
 def test_demand_grouping_accepts_the_other_user_shapes(client):
     listed = client.post(
         "/api/v1/demand/group",
-        json={"users": ["27 inch 1440p monitor with USB-C, max €320", "at least 27 inch QHD, €300"]},
+        json={
+            "users": ["27 inch 1440p monitor with USB-C, max €320", "at least 27 inch QHD, €300"]
+        },
     )
     assert listed.status_code == 200
     assert listed.json()["groups"]
