@@ -65,6 +65,11 @@ def create_app() -> FastAPI:
     async def app_js() -> FileResponse:
         return FileResponse(web_dir / "app.js", media_type="text/javascript")
 
+    @app.get("/sample-customers.json", include_in_schema=False)
+    async def sample_customers() -> FileResponse:
+        """500 generated customers across monitors, wearables and other categories."""
+        return FileResponse(web_dir / "sample-customers.json", media_type="application/json")
+
     app.include_router(demand_router)
     app.include_router(demo_router)
     app.include_router(runs_router)

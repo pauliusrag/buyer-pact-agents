@@ -97,27 +97,6 @@ function initials(id) {
     .join("");
 }
 
-function renderUnderstood(parsed) {
-  const host = $("understood");
-  host.replaceChildren();
-  for (const entry of parsed) {
-    const card = el("div", "card");
-    card.append(el("p", "who", entry.user_id));
-    card.append(el("p", "said", entry.prompt || entry.summary));
-
-    const chips = el("div", "chips");
-    for (const requirement of entry.hard_requirements) chips.append(el("span", "chip", requirement));
-    for (const preference of entry.soft_preferences)
-      chips.append(el("span", "chip soft", preference));
-    if (entry.max_budget != null)
-      chips.append(el("span", "chip", `budget ≤ ${entry.max_budget}`));
-    if (!chips.childElementCount)
-      chips.append(el("span", "empty", "nothing specific stated — we proceed with what we have"));
-    card.append(chips);
-    host.append(card);
-  }
-}
-
 function renderGroups(groups) {
   const host = $("groups");
   host.replaceChildren();
@@ -148,10 +127,16 @@ function renderGroups(groups) {
     countUp(number, group.size);
 
     const members = el("div", "members");
-    for (const id of group.member_user_ids) {
+    const SHOWN = 16;
+    for (const id of group.member_user_ids.slice(0, SHOWN)) {
       const avatar = el("div", "avatar", initials(id));
       avatar.title = id;
       members.append(avatar);
+    }
+    if (group.member_user_ids.length > SHOWN) {
+      const rest = el("div", "avatar rest", `+${group.member_user_ids.length - SHOWN}`);
+      rest.title = group.member_user_ids.slice(SHOWN).join(", ");
+      members.append(rest);
     }
     card.append(members);
 
@@ -340,11 +325,35 @@ function renderResearch(research) {
   }
 }
 
+/**
+ * Per-customer notes are useful in the data and useless on screen: at 500 customers
+ * the same sentence repeats forty times. Group them by what they say.
+ */
 function renderWarnings(warnings) {
   const host = $("warnings");
   host.replaceChildren();
   if (!warnings.length) return;
-  host.append(el("div", "banner", warnings.join(" · ")));
+
+  const kinds = new Map();
+  for (const warning of warnings) {
+    // strip the leading identifier so identical notes collapse together
+    const kind = warning.replace(/^\S+?@?\S*\s/, "").replace(/\(.*?\)/g, "").trim();
+    const entry = kinds.get(kind) ?? { count: 0, sample: warning };
+    entry.count += 1;
+    kinds.set(kind, entry);
+  }
+
+  const banner = el("div", "banner");
+  const lines = [...kinds.entries()].sort((a, b) => b[1].count - a[1].count);
+  for (const [kind, entry] of lines.slice(0, 3)) {
+    banner.append(
+      el("div", null, entry.count > 1 ? `${entry.count} customers — ${kind}` : entry.sample),
+    );
+  }
+  if (lines.length > 3) {
+    banner.append(el("div", null, `and ${lines.length - 3} other kinds of note`));
+  }
+  host.append(banner);
 }
 
 /* --------------------------------------------------------------- wiring -- */
@@ -360,7 +369,23 @@ $("sample").addEventListener("click", () => {
   $("err").hidden = true;
 });
 
-$("go1").addEventListener("click", async () => {
+$("sample500").addEventListener("click", async () => {
+  const button = $("sample500");
+  button.disabled = true;
+  button.textContent = "loading…";
+  try {
+    const response = await fetch("/sample-customers.json");
+    $("input").value = JSON.stringify(await response.json(), null, 1);
+    $("err").hidden = true;
+  } catch {
+    showError("Could not load the 500-customer sample.");
+  } finally {
+    button.disabled = false;
+    button.textContent = "500 customers";
+  }
+});
+
+$("run").addEventListener("click", async () => {
   $("err").hidden = true;
   let input;
   try {
@@ -370,7 +395,7 @@ $("go1").addEventListener("click", async () => {
     return;
   }
 
-  const button = $("go1");
+  const button = $("run");
   const live = $("live").checked;
   button.disabled = true;
   const started = performance.now();
@@ -394,18 +419,22 @@ $("go1").addEventListener("click", async () => {
     data = await research(input.users, live);
     const elapsed = Math.round(performance.now() - started);
 
-    countUp($("n-read"), data.parsed.length);
-    renderUnderstood(data.parsed);
     renderWarnings(data.warnings ?? []);
     renderGroups(data.groups);
     renderResearch(data.research ?? []);
     renderSuppliers(data.research ?? []);
     countUp($("n-groups"), data.groups.length);
+    $("group-note").textContent =
+      data.groups.length > (data.research ?? []).length
+        ? `Showing every group. The ${data.groups_researched} largest go to market research — the rest wait for more demand.`
+        : "";
     $("provider-note").textContent =
       data.provider === "linkup"
         ? "Searched the live web with Linkup. Every candidate keeps the source it came from."
         : "Searched the local demo catalogue. Turn on “search the live web with Linkup” to hit the real web.";
-    $("timing").textContent = `${input.count} requests → ${data.groups.length} groups in ${elapsed} ms`;
+    $("timing").textContent =
+      `${input.count} requests → ${data.groups.length} groups · ` +
+      `${data.groups_researched} researched in ${(elapsed / 1000).toFixed(1)}s`;
 
     showStep(2);
   } catch (error) {
@@ -417,9 +446,8 @@ $("go1").addEventListener("click", async () => {
   }
 });
 
-$("go2").addEventListener("click", () => showStep(3));
-$("go3").addEventListener("click", () => showStep(4));
-$("go4").addEventListener("click", () => showStep(5));
+$("to-products").addEventListener("click", () => showStep(3));
+$("to-suppliers").addEventListener("click", () => showStep(4));
 for (const button of document.querySelectorAll("#restart")) {
   button.addEventListener("click", () => showStep(1));
 }

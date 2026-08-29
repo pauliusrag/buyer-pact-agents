@@ -104,8 +104,7 @@
 
       /* ---------- step 2: understood ---------- */
       .said { font-family: var(--serif); font-size: 19px; line-height: 1.45; margin: 0 0 16px; }
-      .said::before { content: "\\201C"; }
-      .said::after { content: "\\201D"; }
+
       .who { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
       .chips { display: flex; flex-wrap: wrap; gap: 8px; }
       .chip {
@@ -126,6 +125,7 @@
         width: 34px; height: 34px; border-radius: 50%; background: var(--grey-soft); color: var(--ink);
         display: grid; place-items: center; font-size: 12px; font-weight: 700; border: 1px solid var(--line);
       }
+      .avatar.rest { background: transparent; color: var(--muted); font-size: 11px; }
       details.why { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 14px; }
       details.why summary { cursor: pointer; font-size: 13px; color: var(--muted); list-style: none; }
       details.why summary::-webkit-details-marker { display: none; }
@@ -162,8 +162,9 @@
 
       .banner {
         background: var(--amber-soft); color: var(--amber); border-radius: 14px;
-        padding: 14px 18px; font-size: 14px; margin-bottom: 18px;
+        padding: 14px 18px; font-size: 13.5px; margin-bottom: 18px; line-height: 1.7;
       }
+      .banner div + div { border-top: 1px solid color-mix(in srgb, var(--amber) 18%, transparent); padding-top: 6px; margin-top: 6px; }
       .empty { color: var(--muted); font-size: 14px; }
       .spin { display: inline-block; width: 15px; height: 15px; border: 2px solid rgba(255,255,255,.4);
               border-top-color: #fff; border-radius: 50%; animation: sp .7s linear infinite; }
@@ -224,10 +225,10 @@
       <div class="rail-inner">
         <span class="brand">Collective</span>
         <span class="pip now" data-pip="1"><i>1</i> Requests</span><span class="sep">→</span>
-        <span class="pip future" data-pip="2"><i>2</i> Understood</span><span class="sep">→</span>
-        <span class="pip future" data-pip="3"><i>3</i> Grouped</span><span class="sep">→</span>
-        <span class="pip future" data-pip="4"><i>4</i> Products</span><span class="sep">→</span>
-        <span class="pip future" data-pip="5"><i>5</i> Suppliers</span><span class="sep">→</span>
+        <span class="pip future" data-pip="2"><i>2</i> Grouped</span><span class="sep">→</span>
+        <span class="pip future" data-pip="3"><i>3</i> Products</span><span class="sep">→</span>
+        <span class="pip future" data-pip="4"><i>4</i> Suppliers</span><span class="sep">→</span>
+        <span class="pip future" data-pip="5"><i>5</i> Negotiation</span><span class="sep">→</span>
         <span class="pip future" data-pip="6"><i>6</i> Campaign</span>
       </div>
     </div>
@@ -244,8 +245,9 @@
         <div class="card">
           <textarea id="input" spellcheck="false"></textarea>
           <div class="actions">
-            <button class="cta" id="go1">Read the requests</button>
-            <button class="link" id="sample">Reset example</button>
+            <button class="cta" id="run">Read the requests</button>
+            <button class="link" id="sample">5 customers</button>
+            <button class="link" id="sample500">500 customers</button>
             <label class="switch">
               <input type="checkbox" id="live" />
               <span class="track"><span class="knob"></span></span>
@@ -256,43 +258,35 @@
         </div>
       </section>
 
-      <!-- STEP 2 -->
-      <section class="step" id="s2">
-        <p class="eyebrow">Step 2 · Intent agent</p>
-        <h2><span id="n-read">0</span> requests, read one by one</h2>
-        <p class="lede">Free text in, structured requirements out.</p>
-        <div id="understood" class="stagger"></div>
-        <div class="actions"><button class="cta" id="go2">Group compatible demand</button></div>
-      </section>
-
       <!-- STEP 3 -->
-      <section class="step" id="s3">
-        <p class="eyebrow">Step 3 · Bucketing agent</p>
+      <section class="step" id="s2">
+        <p class="eyebrow">Step 2 · Bucketing agent</p>
         <h2><span id="n-groups">0</span> groups a single product could serve</h2>
+        <p class="note" id="group-note"></p>
         <p class="lede">
           A group forms only when one product can satisfy every member's hard requirements. The
           strictest member binds the rest.
         </p>
         <div id="warnings"></div>
         <div id="groups" class="stagger"></div>
-        <div class="actions"><button class="cta" id="go3">Research the market</button></div>
+        <div class="actions"><button class="cta" id="to-products">Research the market</button></div>
       </section>
 
       <!-- STEP 4 -->
-      <section class="step" id="s4">
-        <p class="eyebrow">Step 4 · Market research agent</p>
+      <section class="step" id="s3">
+        <p class="eyebrow">Step 3 · Market research agent</p>
         <h2>Products judged against each group</h2>
         <p class="lede" id="provider-note"></p>
         <div id="research" class="stagger"></div>
         <div class="actions">
-          <button class="cta" id="go4">Find suppliers</button>
+          <button class="cta" id="to-suppliers">Find suppliers</button>
           <span class="note" id="timing"></span>
         </div>
       </section>
 
       <!-- STEP 5 -->
-      <section class="step" id="s5">
-        <p class="eyebrow">Step 5 · Sourcing agent</p>
+      <section class="step" id="s4">
+        <p class="eyebrow">Step 4 · Sourcing agent</p>
         <h2>Who could fulfil the pooled order</h2>
         <p class="lede">
           The same web search, pointed at supply: manufacturers, distributors and resellers

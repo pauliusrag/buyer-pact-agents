@@ -257,6 +257,18 @@ def test_demand_grouping_accepts_the_other_user_shapes(client):
 # --------------------------------------------------------------------------- #
 # The SPA and the agent trace it renders
 # --------------------------------------------------------------------------- #
+def test_the_500_customer_sample_is_served(client):
+    sample = client.get("/sample-customers.json")
+    assert sample.status_code == 200
+    people = sample.json()
+    assert len(people) == 500
+    assert all(isinstance(prompt, str) and prompt for prompt in people.values())
+    # a realistic mix, not 500 variations of one request
+    text = " ".join(people.values()).lower()
+    for token in ("monitor", "ring", "band", "keyboard"):
+        assert token in text
+
+
 def test_spa_is_served(client):
     page = client.get("/")
     assert page.status_code == 200
@@ -264,7 +276,8 @@ def test_spa_is_served(client):
     assert "What do your customers" in page.text
     assert 'id="input"' in page.text
     # the walkthrough is stepped, not one long page
-    assert page.text.count('class="step"') >= 4
+    assert page.text.count('class="step') == 4  # requests, grouped, products, suppliers
+    assert page.text.count('class="step active"') == 1  # only the first is visible
 
     script = client.get("/app.js")
     assert script.status_code == 200

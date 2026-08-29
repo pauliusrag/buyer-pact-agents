@@ -43,7 +43,9 @@ class DemoConfig(SyeModel):
 
     # Bucketing
     bucket_merge_threshold: float = 0.55
-    price_tier_ratio: float = 0.5
+    price_tier_ratio: float = 0.65
+    """Budgets inside one group may differ by about 1.5x. Wider than that and it is
+    two price tiers wearing one label: the cheapest member would bind everyone."""
     materiality_threshold: float = 0.5
     """A merge is blocked when it would impose a requirement this much stricter than
     the market baseline on a member who never asked for it."""

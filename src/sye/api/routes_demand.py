@@ -19,6 +19,7 @@ from pydantic import Field, field_validator
 
 from sye.agents import IntentAgent, MarketResearchAgent, SourcingAgent
 from sye.agents.base import AgentContext
+from sye.agents.market_research_agent import MarketResearchResult
 from sye.api.schemas import ScenarioUser
 from sye.api.service import RunManager, get_run_manager
 from sye.config import get_settings
@@ -92,6 +93,8 @@ class DemandResearchResponse(SyeModel):
     warnings: list[str] = Field(default_factory=list)
     engine: str
     provider: str
+    groups_total: int = 0
+    groups_researched: int = 0
 
 
 class DemandResearchRequest(SyeModel):
@@ -102,6 +105,9 @@ class DemandResearchRequest(SyeModel):
     currency: str = "EUR"
     live: bool = False
     include_suppliers: bool = True
+    max_groups_to_research: int = 3
+    """Research is the expensive stage. With hundreds of customers there are dozens of
+    groups, so only the largest are taken to the web."""
 
     @field_validator("users", mode="before")
     @classmethod
@@ -418,7 +424,24 @@ async def research_demand(request: DemandResearchRequest) -> DemandResearchRespo
 
     intent_result = await IntentAgent(ctx).run(requests)
     agent = MarketResearchAgent(ctx)
-    result = await agent.run(intent_result.intents)
+
+    bucketing = await agent.build_buckets(intent_result.intents)
+    all_buckets = sorted(bucketing.buckets, key=lambda b: (-len(b.member_user_ids), b.bucket_id))
+    researched = all_buckets[: max(1, request.max_groups_to_research)]
+
+    product_outcome = await agent.research_products(researched)
+    match_outcome = await agent.evaluate_matches(researched, product_outcome.products)
+
+    result = MarketResearchResult(
+        agent=agent.name,
+        buckets=researched,
+        memberships=bucketing.memberships,
+        products=product_outcome.products,
+        matches=match_outcome.matches,
+        outcomes=[*product_outcome.outcomes, *match_outcome.outcomes],
+        queries=product_outcome.queries,
+        warnings=[*bucketing.warnings, *product_outcome.warnings, *match_outcome.warnings],
+    )
 
     suppliers_by_bucket: dict[str, list[Supplier]] = {}
     if request.include_suppliers and result.campaign_ready_buckets():
@@ -442,7 +465,7 @@ async def research_demand(request: DemandResearchRequest) -> DemandResearchRespo
     groups: list[DemandGroup] = []
     research: list[BucketResearch] = []
 
-    for bucket in result.buckets:
+    for bucket in all_buckets:
         groups.append(
             DemandGroup(
                 bucket_id=bucket.bucket_id,
@@ -462,6 +485,8 @@ async def research_demand(request: DemandResearchRequest) -> DemandResearchRespo
             )
         )
 
+        if bucket not in researched:
+            continue
         matches = [m for m in result.matches if m.bucket_id == bucket.bucket_id]
         ranked = rank_matches(matches)
         candidates = [
@@ -491,4 +516,6 @@ async def research_demand(request: DemandResearchRequest) -> DemandResearchRespo
         warnings=[*intent_result.warnings, *result.warnings],
         engine=ctx.engine,
         provider=research_client.name,
+        groups_total=len(all_buckets),
+        groups_researched=len(researched),
     )
