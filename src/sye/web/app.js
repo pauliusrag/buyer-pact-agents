@@ -369,21 +369,27 @@ $("sample").addEventListener("click", () => {
   $("err").hidden = true;
 });
 
-$("sample500").addEventListener("click", async () => {
-  const button = $("sample500");
-  button.disabled = true;
-  button.textContent = "loading…";
-  try {
-    const response = await fetch("/sample-customers.json");
-    $("input").value = JSON.stringify(await response.json(), null, 1);
-    $("err").hidden = true;
-  } catch {
-    showError("Could not load the 500-customer sample.");
-  } finally {
-    button.disabled = false;
-    button.textContent = "500 customers";
-  }
-});
+function wireSample(buttonId, url, label) {
+  const button = $(buttonId);
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    button.textContent = "loading…";
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(String(response.status));
+      $("input").value = JSON.stringify(await response.json(), null, 1);
+      $("err").hidden = true;
+    } catch {
+      showError(`Could not load the ${label} sample.`);
+    } finally {
+      button.disabled = false;
+      button.textContent = label;
+    }
+  });
+}
+
+wireSample("sample20", "/sample-customers-20.json", "20 customers");
+wireSample("sample500", "/sample-customers.json", "500 customers");
 
 $("run").addEventListener("click", async () => {
   $("err").hidden = true;

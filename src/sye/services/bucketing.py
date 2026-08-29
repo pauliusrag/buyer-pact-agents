@@ -450,8 +450,9 @@ def bucket_label(
     if parts and category == CATEGORY_WEARABLE and parts[-1] in ("ring", "watch", "band"):
         noun = parts.pop()
     label = " ".join(parts) if parts else "flexible"
+    plural = noun if noun.endswith("s") else f"{noun}s"
     suffix = f" ≤ {_num(ceiling)} {currency}" if ceiling is not None else ""
-    return f"{label} {noun}s{suffix}"
+    return f"{label} {plural}{suffix}"
 
 
 def _monitor_label_parts(by_key: dict[str, RequirementConstraint]) -> list[str]:

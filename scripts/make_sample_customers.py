@@ -199,10 +199,26 @@ def wearable_budget(template: str, days: str, rng: random.Random) -> int:
     return _round_to(base * rng.uniform(0.9, 1.2), 10, rng)
 
 
+# Small samples draw from the common end of each option list. With twenty people and
+# the full spread, almost everyone ends up in a group of one — true of the draw, but
+# not of real demand, where most people want the same few things.
+COMMON = {
+    "sizes": ["27", "27", "32"],
+    "res": ["1440p", "QHD", "4K"],
+    "hz": ["144", "165"],
+    "days": ["7", "7", "10"],
+}
+
+
 def build(count: int, seed: int) -> dict[str, str]:
     rng = random.Random(seed)
     people: dict[str, str] = {}
     used: set[str] = set()
+    narrow = count <= 60
+    sizes = COMMON["sizes"] if narrow else SIZES
+    resolutions = COMMON["res"] if narrow else RES
+    refresh = COMMON["hz"] if narrow else HZ
+    battery = COMMON["days"] if narrow else DAYS
 
     while len(people) < count:
         first, last = rng.choice(FIRST), rng.choice(LAST)
@@ -213,10 +229,10 @@ def build(count: int, seed: int) -> dict[str, str]:
 
         roll = rng.random()
         size, res, hz, days = (
-            rng.choice(SIZES),
-            rng.choice(RES),
-            rng.choice(HZ),
-            rng.choice(DAYS),
+            rng.choice(sizes),
+            rng.choice(resolutions),
+            rng.choice(refresh),
+            rng.choice(battery),
         )
 
         if roll < 0.44:

@@ -177,3 +177,15 @@ async def test_bucketing_is_order_independent_and_stable():
 
     assert [b.bucket_id for b in first.buckets] == [b.bucket_id for b in second.buckets]
     assert first.buckets[0].member_user_ids == second.buckets[0].member_user_ids
+
+
+def test_a_category_that_is_already_plural_is_not_pluralised_twice():
+    from decimal import Decimal
+
+    from sye.services.bucketing import bucket_label
+
+    assert bucket_label("headphones", [], Decimal("250"), "EUR").startswith(
+        "flexible headphones"
+    )
+    assert "headphoness" not in bucket_label("headphones", [], Decimal("250"), "EUR")
+    assert bucket_label("monitor", [], Decimal("250"), "EUR").startswith("flexible monitors")
