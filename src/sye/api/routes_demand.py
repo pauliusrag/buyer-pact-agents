@@ -86,6 +86,7 @@ class DemandGroup(SyeModel):
 
 class ParsedRequest(SyeModel):
     user_id: str
+    prompt: str
     category: str
     summary: str
     hard_requirements: list[str]
@@ -96,10 +97,24 @@ class ParsedRequest(SyeModel):
     engine: str
 
 
+class AgentStep(SyeModel):
+    """One recorded decision, for showing what the agents actually did."""
+
+    sequence: int
+    agent: str
+    node: str
+    status: str
+    message: str
+    decision: str | None = None
+    confidence: float | None = None
+    duration_ms: int | None = None
+
+
 class DemandGroupResponse(SyeModel):
     grouped_at: str
     groups: list[DemandGroup]
     parsed: list[ParsedRequest]
+    trace: list[AgentStep] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     engine: str
 
@@ -132,10 +147,39 @@ def _member_view(
     return out
 
 
-def _parsed_view(intents: list[UserIntent]) -> list[ParsedRequest]:
+AGENT_BY_NODE = {
+    "parse_user_intents": "Intent Agent",
+    "validate_intents": "Intent Agent",
+    "build_demand_buckets": "Market Research Agent",
+}
+
+
+def _trace_view(events) -> list[AgentStep]:
+    """The audit trail, trimmed to what is worth showing a person."""
+    steps: list[AgentStep] = []
+    for event in events:
+        if event.status.value == "started":
+            continue
+        steps.append(
+            AgentStep(
+                sequence=len(steps) + 1,
+                agent=AGENT_BY_NODE.get(event.node, "Pipeline"),
+                node=event.node,
+                status=event.status.value,
+                message=event.message,
+                decision=event.decision,
+                confidence=event.confidence,
+                duration_ms=event.duration_ms,
+            )
+        )
+    return steps
+
+
+def _parsed_view(intents: list[UserIntent], prompts: dict[str, str]) -> list[ParsedRequest]:
     return [
         ParsedRequest(
             user_id=intent.user_id,
+            prompt=prompts.get(intent.user_id, ""),
             category=intent.category,
             summary=intent.extraction_summary,
             hard_requirements=[describe(c) for c in intent.hard_constraints()],
@@ -216,7 +260,8 @@ async def group_demand(
     return DemandGroupResponse(
         grouped_at=now.isoformat(),
         groups=groups,
-        parsed=_parsed_view(intent_result.intents),
+        parsed=_parsed_view(intent_result.intents, {r.user_id: r.prompt for r in requests}),
+        trace=_trace_view(ctx.audit.ordered()),
         warnings=[*intent_result.warnings, *bucketing.warnings],
         engine=ctx.engine,
     )

@@ -591,7 +591,13 @@ def _membership_explanations(
 def requirement_summary(bucket: DemandBucket) -> list[str]:
     """One line per binding requirement, for campaign/report rendering."""
     lines = []
-    for constraint in bucket.shared_hard_constraints:
+    # Most-shared first: a requirement four of five buyers stated says more about the
+    # group than one only a single member asked for.
+    ordered = sorted(
+        bucket.shared_hard_constraints,
+        key=lambda c: (-len(c.required_by_user_ids), c.key),
+    )
+    for constraint in ordered:
         if constraint.key == "price.unit_price":
             continue
         who = (

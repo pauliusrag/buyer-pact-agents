@@ -207,6 +207,41 @@ enums as plain strings — no custom decoding needed.
 
 ---
 
+## The demo web app
+
+```bash
+uv run uvicorn sye.main:app --port 8000     # then open http://localhost:8000
+```
+
+A single page that shows the agents working. Paste a JSON object of customer
+requests — the key is a name or email, the value is what that person actually
+wrote — press **Run the agents**, and it renders:
+
+1. **Buying groups** — who was grouped with whom, the requirements that bind each
+   group (most-shared first), and, per member, which requirements they inherited
+   from someone else.
+2. **What each customer wrote, and what the agent understood** — their own words
+   beside the structured requirements extracted from them.
+3. **What the agents did** — the recorded decision trail, agent by agent.
+
+```json
+{
+  "anna@example.com": "I want a smart ring that tracks my sleep and HRV. No monthly subscription please. Under €300.",
+  "ben@example.com": "Looking for a sleep tracking ring, works with my iPhone, at least a week of battery. Max €320.",
+  "eva@example.com": "Fitness band with GPS and heart rate for running, waterproof, around €200."
+}
+```
+
+It runs the ingestion and grouping half of the pipeline only — parse intents, then
+group. That takes about 25 ms, needs no API key, and touches no external service, so
+the page answers instantly. Product research and negotiation are the slow half and
+stay behind the CLI and the run API.
+
+The page is plain HTML, CSS and JavaScript served by FastAPI from
+[`src/sye/web/`](src/sye/web/) — no build step, no dependencies, nothing to install.
+
+---
+
 ## Connecting a Lovable frontend
 
 Full guide: [frontend/README.md](frontend/README.md). TypeScript types for the entire

@@ -250,3 +250,39 @@ def test_demand_grouping_accepts_the_other_user_shapes(client):
     assert listed.json()["groups"]
 
     assert client.post("/api/v1/demand/group", json={"users": []}).status_code == 422
+
+
+# --------------------------------------------------------------------------- #
+# The SPA and the agent trace it renders
+# --------------------------------------------------------------------------- #
+def test_spa_is_served(client):
+    page = client.get("/")
+    assert page.status_code == 200
+    assert "text/html" in page.headers["content-type"]
+    assert "Demand bucketing agents" in page.text
+    assert 'id="input"' in page.text
+
+    script = client.get("/app.js")
+    assert script.status_code == 200
+    assert "javascript" in script.headers["content-type"]
+    assert "/api/v1/demand/group" in script.text
+
+
+def test_grouping_returns_a_readable_agent_trace(client):
+    body = client.post("/api/v1/demand/group", json=DEMAND_BODY).json()
+
+    trace = body["trace"]
+    assert trace, "the SPA shows what the agents did; it needs a trace"
+    assert [step["sequence"] for step in trace] == list(range(1, len(trace) + 1))
+    agents = {step["agent"] for step in trace}
+    assert {"Intent Agent", "Market Research Agent"} <= agents
+    assert all(step["message"] for step in trace)
+    # no half-finished steps leak into the view
+    assert all(step["status"] != "started" for step in trace)
+
+
+def test_parsed_view_keeps_the_customers_own_words(client):
+    body = client.post("/api/v1/demand/group", json=DEMAND_BODY).json()
+    anna = next(entry for entry in body["parsed"] if entry["user_id"] == "anna")
+    assert anna["prompt"] == DEMAND_BODY["users"]["anna"]
+    assert anna["summary"] != anna["prompt"]  # interpretation, shown side by side

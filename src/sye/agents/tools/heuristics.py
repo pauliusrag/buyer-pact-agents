@@ -37,6 +37,15 @@ BRANDS = (
     "huawei",
     "koorui",
     "hisense",
+    # wearables
+    "oura",
+    "whoop",
+    "garmin",
+    "fitbit",
+    "ultrahuman",
+    "ringconn",
+    "polar",
+    "withings",
 )
 
 CATEGORY_HINTS: dict[str, tuple[str, ...]] = {
@@ -502,11 +511,8 @@ def _extract_wearable(text: str, constraints: list[RequirementConstraint]) -> No
 
     # sensors and features
     feature_patterns = (
-        (
-            r"sleep (?:tracking|track|score|staging)|track(?:s|ing)? my sleep",
-            "sensors.sleep_tracking",
-            0.92,
-        ),
+        # In a wearable request, any mention of sleep means sleep tracking.
+        (r"\bsleep\b", "sensors.sleep_tracking", 0.9),
         (r"heart rate|\bhr\b|hrv|pulse", "sensors.heart_rate", 0.9),
         (r"spo2|blood oxygen|oxygen saturation", "sensors.spo2", 0.9),
         (r"temperature|body temp|skin temp", "sensors.temperature", 0.88),
@@ -534,7 +540,8 @@ def _extract_wearable(text: str, constraints: list[RequirementConstraint]) -> No
 
     # subscriptions: "no subscription" is a hard requirement people feel strongly about
     match = re.search(
-        r"(no|without|free of|don'?t want a?|hate|avoid)\s+(monthly\s+)?"
+        r"(no|without|free of|don'?t want a?|won'?t pay for a?|refuse to pay (?:for )?a?"
+        r"|not paying for a?|hate|avoid)\s+(monthly\s+)?"
         r"(subscription|membership|monthly fee)",
         text,
     )

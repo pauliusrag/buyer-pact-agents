@@ -6,10 +6,13 @@ frontend integrates by reading JSON, never by understanding LangGraph.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from sye import __version__
 from sye.api.routes_campaigns import router as campaigns_router
@@ -48,6 +51,19 @@ def create_app() -> FastAPI:
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["*"],
     )
+
+    web_dir = Path(__file__).resolve().parent / "web"
+
+    @app.get("/", include_in_schema=False)
+    async def index() -> FileResponse:
+        """The demand-bucketing SPA."""
+        return FileResponse(web_dir / "index.html")
+
+    app.mount("/app", StaticFiles(directory=web_dir, html=True), name="web")
+
+    @app.get("/app.js", include_in_schema=False)
+    async def app_js() -> FileResponse:
+        return FileResponse(web_dir / "app.js", media_type="text/javascript")
 
     app.include_router(demand_router)
     app.include_router(demo_router)
