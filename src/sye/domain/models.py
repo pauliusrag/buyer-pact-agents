@@ -248,6 +248,9 @@ class ProductMatch(SyeModel):
     negotiable_gaps: list[str] = Field(default_factory=list)
     rejection_reasons: list[str] = Field(default_factory=list)
     unknown_specs: list[str] = Field(default_factory=list)
+    price_implausible: bool = False
+    """Priced so far below its peers that the listing probably is not the product it
+    claims to be. Such a candidate is never chosen as the best fit on price alone."""
 
     explanation: str = ""
     explained_by: str = "deterministic"

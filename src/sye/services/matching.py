@@ -195,6 +195,55 @@ def _deterministic_explanation(
     return f"{head}; rejected: {rejection_reasons[0] if rejection_reasons else 'unknown reason'}"
 
 
+IMPLAUSIBLE_PRICE_RATIO = 0.35
+"""A candidate priced below this share of the peer median is treated as suspect."""
+
+
+def flag_implausible_prices(
+    matches: list[ProductMatch], products: dict[str, ProductCandidate]
+) -> list[ProductMatch]:
+    """Mark candidates that are far cheaper than every peer.
+
+    Web listings for a category are usually clustered; a smart ring at a tenth of the
+    going rate is more often a mislabelled listing than a bargain. We do not reject
+    it — the evidence is real and it stays visible — but it cannot win on price alone.
+    """
+    priced = [
+        float(products[m.product_id].normal_market_price)
+        for m in matches
+        if m.product_id in products and products[m.product_id].normal_market_price is not None
+    ]
+    if len(priced) < 3:
+        return matches
+
+    ordered = sorted(priced)
+    middle = len(ordered) // 2
+    median = ordered[middle] if len(ordered) % 2 else (ordered[middle - 1] + ordered[middle]) / 2
+    if median <= 0:
+        return matches
+
+    flagged: list[ProductMatch] = []
+    for match in matches:
+        product = products.get(match.product_id)
+        price = product.normal_market_price if product else None
+        if price is not None and float(price) < median * IMPLAUSIBLE_PRICE_RATIO:
+            flagged.append(
+                match.model_copy(
+                    update={
+                        "price_implausible": True,
+                        "explanation": (
+                            f"{match.explanation} Priced far below every comparable "
+                            f"candidate (median {median:.0f}), so the listing is treated "
+                            "as unverified rather than as the best deal."
+                        ),
+                    }
+                )
+            )
+        else:
+            flagged.append(match)
+    return flagged
+
+
 def evaluate_bucket(
     bucket: DemandBucket,
     products: list[ProductCandidate],
@@ -203,6 +252,7 @@ def evaluate_bucket(
     run_id: str,
 ) -> list[ProductMatch]:
     matches = [evaluate_product(bucket, p, config, run_id=run_id) for p in products]
+    matches = flag_implausible_prices(matches, {p.product_id: p for p in products})
     return rank_matches(matches)
 
 
@@ -224,6 +274,7 @@ def rank_matches(matches: list[ProductMatch]) -> list[ProductMatch]:
         matches,
         key=lambda m: (
             _CLASS_ORDER[m.classification],
+            m.price_implausible,  # suspect prices rank below trustworthy ones
             -m.overall_score,
             m.product_name,
             m.product_id,

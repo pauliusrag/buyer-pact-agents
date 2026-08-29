@@ -17,7 +17,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import Field, field_validator
 
-from sye.agents import IntentAgent, MarketResearchAgent
+from sye.agents import IntentAgent, MarketResearchAgent, SourcingAgent
 from sye.agents.base import AgentContext
 from sye.api.schemas import ScenarioUser
 from sye.api.service import RunManager, get_run_manager
@@ -30,13 +30,85 @@ from sye.domain.models import (
     UserRequest,
 )
 from sye.domain.primitives import SyeModel
+from sye.integrations.linkup_client import ResearchError, build_research_client
 from sye.integrations.llm import NullProvider, build_llm_provider
 from sye.observability.audit import AuditLogger
 from sye.services.bucketing import requirement_summary
 from sye.services.constraints import describe
+from sye.services.matching import rank_matches
 from sye.services.scenarios import normalize_users
 
 router = APIRouter(prefix="/api/v1/demand", tags=["demand"])
+
+
+class Candidate(SyeModel):
+    """A researched product, judged against one group's requirements."""
+
+    product_id: str
+    name: str
+    brand: str
+    price: float | None
+    currency: str | None
+    verdict: str
+    score: float
+    reason: str
+    passed: int
+    total: int
+    attributes: dict[str, Any] = Field(default_factory=dict)
+    listing_url: str | None = None
+    origin: str
+    sources: list[str] = Field(default_factory=list)
+    price_implausible: bool = False
+
+
+class Supplier(SyeModel):
+    """A company that could plausibly fulfil the group's order."""
+
+    supplier_id: str
+    name: str
+    type: str
+    website: str | None = None
+    market: str | None = None
+    origin: str
+    sources: list[str] = Field(default_factory=list)
+
+
+class BucketResearch(SyeModel):
+    bucket_id: str
+    label: str
+    queries: list[str] = Field(default_factory=list)
+    candidates: list[Candidate] = Field(default_factory=list)
+    winner_id: str | None = None
+    suppliers: list[Supplier] = Field(default_factory=list)
+    demand_quantity: int = 0
+
+
+class DemandResearchResponse(SyeModel):
+    grouped_at: str
+    groups: list[DemandGroup]
+    research: list[BucketResearch] = Field(default_factory=list)
+    parsed: list[ParsedRequest] = Field(default_factory=list)
+    trace: list[AgentStep] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    engine: str
+    provider: str
+
+
+class DemandResearchRequest(SyeModel):
+    """Same input as grouping, plus whether to search the live web."""
+
+    users: list[ScenarioUser] = Field(default_factory=list)
+    market: str = "SE"
+    currency: str = "EUR"
+    live: bool = False
+    include_suppliers: bool = True
+
+    @field_validator("users", mode="before")
+    @classmethod
+    def _accept_any_user_shape(cls, value: Any) -> Any:
+        if value in (None, [], {}):
+            return []
+        return normalize_users(value)
 
 
 class DemandGroupRequest(SyeModel):
@@ -264,4 +336,159 @@ async def group_demand(
         trace=_trace_view(ctx.audit.ordered()),
         warnings=[*intent_result.warnings, *bucketing.warnings],
         engine=ctx.engine,
+    )
+
+
+def _candidate_view(match, product, bucket_currency: str) -> Candidate:
+    passed = sum(1 for e in match.hard_constraint_results if e.result.value == "pass")
+    reason = (
+        match.rejection_reasons[0]
+        if match.rejection_reasons
+        else (match.negotiable_gaps[0] if match.negotiable_gaps else match.explanation)
+    )
+    return Candidate(
+        product_id=product.product_id,
+        name=product.canonical_name,
+        brand=product.brand,
+        price=float(product.normal_market_price)
+        if product.normal_market_price is not None
+        else None,
+        currency=product.currency or bucket_currency,
+        verdict=match.classification.value,
+        score=match.overall_score,
+        reason=reason,
+        passed=passed,
+        total=len(match.hard_constraint_results),
+        attributes=product.attributes,
+        listing_url=product.listing_url,
+        origin=product.data_origin.value,
+        sources=[source.url for source in product.sources][:3],
+        price_implausible=match.price_implausible,
+    )
+
+
+@router.post(
+    "/research",
+    response_model=DemandResearchResponse,
+    summary="Group demand, then research products that fit each group",
+    description=(
+        "Runs the market research agent end to end: parse, group, search for "
+        "candidates and judge every one against the group's binding requirements. "
+        "Set `live: true` to search the real web with Linkup."
+    ),
+)
+async def research_demand(request: DemandResearchRequest) -> DemandResearchResponse:
+    if not request.users:
+        raise HTTPException(status_code=422, detail="no users to research for")
+
+    settings = get_settings()
+    run_id = new_run_id()
+    config = settings.demo_config(offline=not request.live, write_snapshots=False).model_copy(
+        update={"market": request.market, "currency": request.currency}
+    )
+
+    llm = build_llm_provider(settings, offline=False)
+    try:
+        research_client = build_research_client(
+            settings, offline=config.offline, seed=config.seed, max_calls=config.max_linkup_calls
+        )
+    except ResearchError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    ctx = AgentContext(
+        run_id=run_id,
+        config=config,
+        audit=AuditLogger(run_id),
+        llm=None if isinstance(llm, NullProvider) else llm,
+        research=research_client,
+    )
+
+    now = utcnow()
+    requests = [
+        UserRequest(
+            user_id=user.user_id or f"user_{index + 1:03d}",
+            request_id=stable_id("req", run_id, user.user_id or str(index)),
+            prompt=user.prompt,
+            market=user.market or request.market,
+            currency=user.currency or request.currency,
+            created_at=now,
+        )
+        for index, user in enumerate(request.users)
+    ]
+
+    intent_result = await IntentAgent(ctx).run(requests)
+    agent = MarketResearchAgent(ctx)
+    result = await agent.run(intent_result.intents)
+
+    suppliers_by_bucket: dict[str, list[Supplier]] = {}
+    if request.include_suppliers and result.campaign_ready_buckets():
+        sourcing = await SourcingAgent(ctx).research_suppliers(
+            result.campaign_ready_buckets(), result.products, result.matches
+        )
+        for supplier in sourcing.suppliers:
+            suppliers_by_bucket.setdefault(supplier.bucket_id or "", []).append(
+                Supplier(
+                    supplier_id=supplier.supplier_id,
+                    name=supplier.name,
+                    type=supplier.supplier_type,
+                    website=supplier.website,
+                    market=supplier.market,
+                    origin=supplier.data_origin.value,
+                    sources=[source.url for source in supplier.evidence][:2],
+                )
+            )
+
+    products = {p.product_id: p for p in result.products}
+    groups: list[DemandGroup] = []
+    research: list[BucketResearch] = []
+
+    for bucket in result.buckets:
+        groups.append(
+            DemandGroup(
+                bucket_id=bucket.bucket_id,
+                label=bucket.label,
+                category=bucket.category,
+                member_user_ids=bucket.member_user_ids,
+                size=len(bucket.member_user_ids),
+                demand_quantity=bucket.demand_quantity,
+                price_ceiling=float(bucket.price_ceiling)
+                if bucket.price_ceiling is not None
+                else None,
+                currency=bucket.currency,
+                requirements=requirement_summary(bucket),
+                explanation=bucket.compatibility_explanation,
+                compatibility_score=bucket.compatibility_score,
+                members=_member_view(result.memberships, bucket),
+            )
+        )
+
+        matches = [m for m in result.matches if m.bucket_id == bucket.bucket_id]
+        ranked = rank_matches(matches)
+        candidates = [
+            _candidate_view(match, products[match.product_id], bucket.currency)
+            for match in ranked
+            if match.product_id in products
+        ]
+        best = result.best_match(bucket.bucket_id)
+        research.append(
+            BucketResearch(
+                bucket_id=bucket.bucket_id,
+                label=bucket.label,
+                queries=result.queries.get(bucket.bucket_id, []),
+                candidates=candidates,
+                winner_id=best.product_id if best else None,
+                suppliers=suppliers_by_bucket.get(bucket.bucket_id, []),
+                demand_quantity=bucket.demand_quantity,
+            )
+        )
+
+    return DemandResearchResponse(
+        grouped_at=now.isoformat(),
+        groups=groups,
+        research=research,
+        parsed=_parsed_view(intent_result.intents, {r.user_id: r.prompt for r in requests}),
+        trace=_trace_view(ctx.audit.ordered()),
+        warnings=[*intent_result.warnings, *result.warnings],
+        engine=ctx.engine,
+        provider=research_client.name,
     )

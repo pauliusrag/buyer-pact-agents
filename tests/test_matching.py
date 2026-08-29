@@ -243,3 +243,51 @@ def test_missing_price_triggers_verification():
     assert needs_verification(priced, target) is False
     assert needs_verification(unpriced, target) is True
     assert needs_verification(foreign, target) is True
+
+
+def test_a_price_far_below_its_peers_is_flagged_and_demoted():
+    """A smart ring at a tenth of the going rate is a bad listing, not a bargain."""
+    from sye.services.matching import evaluate_bucket
+
+    target = bucket(
+        [
+            constraint("display.size_in", ConstraintOperator.GTE, 27),
+            constraint("price.unit_price", ConstraintOperator.LTE, 400),
+        ]
+    )
+    attributes = {"display.size_in": 27}
+    products = [
+        make_product("Suspiciously Cheap", price=29.0, attributes=attributes),
+        make_product("Normal A", price=289.0, attributes=attributes),
+        make_product("Normal B", price=299.0, attributes=attributes),
+        make_product("Normal C", price=319.0, attributes=attributes),
+    ]
+    ranked = evaluate_bucket(target, products, CONFIG, run_id="run_test")
+
+    flagged = {m.product_name: m.price_implausible for m in ranked}
+    assert flagged["Suspiciously Cheap"] is True
+    assert not any(value for name, value in flagged.items() if name != "Suspiciously Cheap")
+
+    # It stays visible and qualified — but it does not win on price alone.
+    assert ranked[0].product_name != "Suspiciously Cheap"
+    cheap = next(m for m in ranked if m.product_name == "Suspiciously Cheap")
+    assert cheap.classification == MatchClassification.QUALIFIED
+    assert "unverified" in cheap.explanation
+
+
+def test_a_small_candidate_set_is_left_alone():
+    """With two candidates there is no peer group to be an outlier against."""
+    from sye.services.matching import evaluate_bucket
+
+    target = bucket([constraint("price.unit_price", ConstraintOperator.LTE, 400)])
+    attributes = {"display.size_in": 27}
+    ranked = evaluate_bucket(
+        target,
+        [
+            make_product("Cheap", price=29.0, attributes=attributes),
+            make_product("Normal", price=299.0, attributes=attributes),
+        ],
+        CONFIG,
+        run_id="run_test",
+    )
+    assert not any(m.price_implausible for m in ranked)

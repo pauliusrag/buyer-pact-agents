@@ -213,16 +213,23 @@ enums as plain strings — no custom decoding needed.
 uv run uvicorn sye.main:app --port 8000     # then open http://localhost:8000
 ```
 
-A single page that shows the agents working. Paste a JSON object of customer
-requests — the key is a name or email, the value is what that person actually
-wrote — press **Run the agents**, and it renders:
+A stepped walkthrough of the agents, built to be watched. Paste a JSON object of
+customer requests — the key is a name or email, the value is what that person wrote —
+and each step reveals the next:
 
-1. **Buying groups** — who was grouped with whom, the requirements that bind each
-   group (most-shared first), and, per member, which requirements they inherited
-   from someone else.
-2. **What each customer wrote, and what the agent understood** — their own words
-   beside the structured requirements extracted from them.
-3. **What the agents did** — the recorded decision trail, agent by agent.
+| Step | Agent | What you see |
+| --- | --- | --- |
+| 1 · Requests | — | the raw JSON |
+| 2 · Understood | Intent agent | each request in the customer's own words, beside the requirements extracted from it |
+| 3 · Grouped | Bucketing agent | the groups, sized, with the requirements that bind them (most-shared first) |
+| 4 · Products | Market research agent | the query sent to the web, and every candidate judged against the group |
+| 5 · Suppliers | Sourcing agent | who could fulfil the pooled order |
+
+**Linkup** does the searching in steps 4 and 5. Turn on *"search the live web with
+Linkup"* and the agent writes a query from the group's binding requirements, searches
+the real web, and every candidate keeps the source it came from — visible on the card.
+Left off, it reads the local fixture catalogue instead, which is instant and
+deterministic for rehearsal.
 
 ```json
 {
@@ -232,13 +239,8 @@ wrote — press **Run the agents**, and it renders:
 }
 ```
 
-It runs the ingestion and grouping half of the pipeline only — parse intents, then
-group. That takes about 25 ms, needs no API key, and touches no external service, so
-the page answers instantly. Product research and negotiation are the slow half and
-stay behind the CLI and the run API.
-
 The page is plain HTML, CSS and JavaScript served by FastAPI from
-[`src/sye/web/`](src/sye/web/) — no build step, no dependencies, nothing to install.
+[`src/sye/web/`](src/sye/web/) — no build step, no dependencies.
 
 ---
 

@@ -261,13 +261,15 @@ def test_spa_is_served(client):
     page = client.get("/")
     assert page.status_code == 200
     assert "text/html" in page.headers["content-type"]
-    assert "Demand bucketing agents" in page.text
+    assert "What do your customers" in page.text
     assert 'id="input"' in page.text
+    # the walkthrough is stepped, not one long page
+    assert page.text.count('class="step"') >= 4
 
     script = client.get("/app.js")
     assert script.status_code == 200
     assert "javascript" in script.headers["content-type"]
-    assert "/api/v1/demand/group" in script.text
+    assert "/api/v1/demand/research" in script.text
 
 
 def test_grouping_returns_a_readable_agent_trace(client):

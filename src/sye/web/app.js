@@ -1,9 +1,9 @@
 /**
- * Demand bucketing SPA.
+ * Stepped walkthrough of the demand agents.
  *
- * Takes a JSON object of {customer: "what they want"}, sends it to the grouping
- * agents, and renders what came back. No framework, no build step: the point is to
- * make the agents' work legible, not to demonstrate a frontend stack.
+ * One step at a time, each revealed by finishing the one before it: requests →
+ * understood → grouped → products. The data all comes from one call to
+ * /api/v1/demand/research; the steps control how much of it is on screen.
  */
 
 const EXAMPLE = {
@@ -13,149 +13,330 @@ const EXAMPLE = {
     "Looking for a sleep tracking ring, works with my iPhone, at least a week of battery. Max €320.",
   "cara@example.com":
     "A ring for sleep and recovery, I refuse to pay a subscription. Around €280.",
-  "dmitri@example.com":
-    "I want the Oura ring, sleep and temperature tracking, up to €380.",
+  "dmitri@example.com": "I want the Oura ring, sleep and temperature tracking, up to €380.",
   "eva@example.com":
     "Fitness band with GPS and heart rate for running, waterproof, around €200.",
 };
 
 const $ = (id) => document.getElementById(id);
-const el = (tag, className, text) => {
+const el = (tag, cls, text) => {
   const node = document.createElement(tag);
-  if (className) node.className = className;
+  if (cls) node.className = cls;
   if (text !== undefined) node.textContent = text;
   return node;
 };
 
-/** Accept the documented shape, and the obvious near-misses, without guessing. */
+let data = null;
+
+/* ---------------------------------------------------------------- steps -- */
+
+function showStep(n) {
+  for (const section of document.querySelectorAll(".step")) section.classList.remove("active");
+  $(`s${n}`).classList.add("active");
+
+  for (const pip of document.querySelectorAll(".pip")) {
+    const index = Number(pip.dataset.pip);
+    pip.classList.toggle("done", index < n);
+    pip.classList.toggle("now", index === n);
+    pip.classList.toggle("future", index > n);
+  }
+  window.scrollTo({ top: 0, behavior: n === 1 ? "auto" : "smooth" });
+}
+
+function countUp(node, target) {
+  const duration = 550;
+  const started = performance.now();
+  const tick = (now) => {
+    const progress = Math.min((now - started) / duration, 1);
+    node.textContent = Math.round(target * (1 - Math.pow(1 - progress, 3)));
+    if (progress < 1) requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
+/* ------------------------------------------------------------- fetching -- */
+
 function parseInput(raw) {
   const text = raw.trim();
   if (!text) throw new Error("Paste some customer requests first.");
-
   let value;
   try {
     value = JSON.parse(text);
   } catch (cause) {
     throw new Error(`That is not valid JSON — ${cause.message}`);
   }
-
-  let users;
-  if (Array.isArray(value)) {
-    users = value;
-  } else if (value && typeof value === "object") {
-    users = Array.isArray(value.users) ? value.users : value.users ?? value;
-  } else {
-    throw new Error("Expected an object of {customer: request} pairs.");
-  }
-
-  const count = Array.isArray(users) ? users.length : Object.keys(users).length;
+  const users =
+    Array.isArray(value) || !value.users ? value : value.users;
+  const count = Array.isArray(users) ? users.length : Object.keys(users ?? {}).length;
   if (!count) throw new Error("No customers found in that JSON.");
-  return users;
+  return { users, count };
 }
 
-async function runAgents(users) {
-  const response = await fetch("/api/v1/demand/group", {
+async function research(users, live) {
+  const response = await fetch("/api/v1/demand/research", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ users }),
+    body: JSON.stringify({ users, live }),
   });
   if (!response.ok) {
     const detail = await response.text();
-    throw new Error(`The agents could not run (${response.status}). ${detail.slice(0, 300)}`);
+    throw new Error(`The agents could not run (${response.status}). ${detail.slice(0, 240)}`);
   }
   return response.json();
 }
 
-/* -------------------------------------------------------------------------- */
-/* Rendering                                                                   */
-/* -------------------------------------------------------------------------- */
+/* ------------------------------------------------------------ rendering -- */
 
-function renderBucket(group) {
-  const card = el("div", "card bucket");
+function initials(id) {
+  const name = id.split("@")[0].replace(/[._-]+/g, " ");
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0].toUpperCase())
+    .join("");
+}
 
-  card.append(el("h3", null, group.label));
+function renderUnderstood(parsed) {
+  const host = $("understood");
+  host.replaceChildren();
+  for (const entry of parsed) {
+    const card = el("div", "card");
+    card.append(el("p", "who", entry.user_id));
+    card.append(el("p", "said", entry.prompt || entry.summary));
 
-  const people = group.size === 1 ? "1 customer" : `${group.size} customers`;
-  const ceiling =
-    group.price_ceiling != null
-      ? ` · group ceiling ${group.currency} ${group.price_ceiling}`
-      : "";
-  card.append(el("p", "meta", `${people}${ceiling} · ${group.category}`));
-
-  const chips = el("div", "chips");
-  for (const member of group.member_user_ids) chips.append(el("span", "chip", member));
-  card.append(chips);
-
-  if (group.requirements.length) {
-    const list = el("ul", "reqs");
-    for (const requirement of group.requirements) list.append(el("li", null, requirement));
-    card.append(list);
+    const chips = el("div", "chips");
+    for (const requirement of entry.hard_requirements) chips.append(el("span", "chip", requirement));
+    for (const preference of entry.soft_preferences)
+      chips.append(el("span", "chip soft", preference));
+    if (entry.max_budget != null)
+      chips.append(el("span", "chip", `budget ≤ ${entry.max_budget}`));
+    if (!chips.childElementCount)
+      chips.append(el("span", "empty", "nothing specific stated — we proceed with what we have"));
+    card.append(chips);
+    host.append(card);
   }
+}
 
-  card.append(el("p", "why", group.explanation));
+function renderGroups(groups) {
+  const host = $("groups");
+  host.replaceChildren();
 
-  if (group.members.length) {
-    const details = el("details");
-    details.append(el("summary", null, "Why each customer is in this group"));
-    for (const member of group.members) {
-      const row = el("div", "member");
-      row.append(el("b", null, member.user_id));
-      row.append(el("p", null, member.explanation));
-      if (member.inherited_requirements.length) {
-        row.append(
-          el(
-            "p",
-            null,
-            `Also getting, because other members require it: ${member.inherited_requirements.join(
-              ", ",
-            )}`,
-          ),
-        );
-      }
-      details.append(row);
+  for (const group of [...groups].sort((a, b) => b.size - a.size)) {
+    const card = el("div", "card group");
+
+    const top = el("div", "top");
+    const heading = el("div");
+    heading.append(el("h3", null, group.label));
+    heading.append(
+      el(
+        "p",
+        "note",
+        group.price_ceiling != null
+          ? `ceiling ${group.currency} ${group.price_ceiling}`
+          : "no stated ceiling",
+      ),
+    );
+    top.append(heading);
+
+    const stat = el("div", "big");
+    const number = el("span", null, "0");
+    stat.append(number);
+    stat.append(el("small", null, group.size === 1 ? "customer" : "customers"));
+    top.append(stat);
+    card.append(top);
+    countUp(number, group.size);
+
+    const members = el("div", "members");
+    for (const id of group.member_user_ids) {
+      const avatar = el("div", "avatar", initials(id));
+      avatar.title = id;
+      members.append(avatar);
     }
-    card.append(details);
+    card.append(members);
+
+    const chips = el("div", "chips");
+    for (const requirement of group.requirements) {
+      const match = requirement.match(/^(.*?)\s*\(required by (\d+)\/(\d+) buyers\)$/);
+      if (match) {
+        const chip = el("span", "chip count", match[1]);
+        chip.dataset.count = `${match[2]}/${match[3]}`;
+        chips.append(chip);
+      } else {
+        chips.append(el("span", "chip", requirement));
+      }
+    }
+    card.append(chips);
+
+    if (group.members.length) {
+      const why = el("details", "why");
+      why.append(el("summary", null, "Why each customer is here"));
+      for (const member of group.members) {
+        const row = el("div", "whyrow");
+        row.append(el("b", null, member.user_id));
+        row.append(el("p", null, member.explanation));
+        if (member.inherited_requirements.length) {
+          row.append(
+            el("p", null, `Inherited from others: ${member.inherited_requirements.join(", ")}`),
+          );
+        }
+        why.append(row);
+      }
+      card.append(why);
+    }
+
+    host.append(card);
+  }
+}
+
+function productCard(candidate, bucket) {
+  const card = el("div", "product");
+  if (candidate.product_id === bucket.winner_id) card.classList.add("win");
+  if (candidate.verdict === "rejected") card.classList.add("out");
+
+  card.append(
+    el(
+      "span",
+      `verdict v-${candidate.verdict}`,
+      candidate.product_id === bucket.winner_id ? "best fit" : candidate.verdict.replace("_", " "),
+    ),
+  );
+  card.append(el("div", "name", candidate.name));
+  if (candidate.price_implausible) {
+    card.append(el("span", "flag", "price looks too low to trust"));
   }
 
+  if (candidate.price != null) {
+    const price = el("div", "price", `${candidate.price}`);
+    price.append(el("small", null, candidate.currency ?? ""));
+    card.append(price);
+  } else {
+    card.append(el("div", "price", "—"));
+  }
+
+  const bar = el("div", "bar");
+  const fill = el("i");
+  bar.append(fill);
+  card.append(bar);
+  requestAnimationFrame(() => {
+    fill.style.width = `${(candidate.passed / Math.max(candidate.total, 1)) * 100}%`;
+  });
+  card.append(
+    el("p", "reason", `${candidate.passed}/${candidate.total} requirements · ${candidate.reason}`),
+  );
+
+  if (candidate.sources.length) {
+    const src = el("div", "srcs");
+    src.append(document.createTextNode("source: "));
+    const link = el("a", null, sourceLabel(candidate.sources[0]));
+    link.href = candidate.sources[0];
+    link.target = "_blank";
+    link.rel = "noreferrer";
+    src.append(link);
+    card.append(src);
+  }
   return card;
 }
 
-function renderParsed(parsed) {
-  const body = $("parsed-table").querySelector("tbody");
-  body.replaceChildren();
-  for (const entry of parsed) {
-    const row = el("tr");
-    row.append(el("td", null, entry.user_id));
-    row.append(el("td", "said", entry.prompt || entry.summary));
-
-    const understood = el("td");
-    if (entry.hard_requirements.length) {
-      for (const requirement of entry.hard_requirements) {
-        understood.append(el("code", null, requirement));
-        understood.append(document.createTextNode(" "));
-      }
-    } else {
-      understood.append(el("span", "empty", "nothing stated as a hard requirement"));
-    }
-    row.append(understood);
-
-    row.append(el("td", null, entry.max_budget != null ? `≤ ${entry.max_budget}` : "—"));
-    body.append(row);
+function sourceLabel(url) {
+  try {
+    return new URL(url).hostname.replace("www.", "");
+  } catch {
+    return url.replace("fixture://", "local catalogue · ");
   }
 }
 
-function renderTrace(trace) {
-  const list = $("trace");
-  list.replaceChildren();
-  for (const step of trace) {
-    const item = el("li");
-    item.append(el("span", "who", step.agent));
-    const what = el("span", "what", step.message);
-    if (step.decision && step.decision !== step.message) {
-      what.append(el("em", null, step.decision));
+function renderSuppliers(research) {
+  const host = $("suppliers");
+  host.replaceChildren();
+  for (const bucket of research) {
+    if (!bucket.suppliers.length) continue;
+    const card = el("div", "card");
+    card.append(el("h3", null, bucket.label));
+    card.append(
+      el(
+        "p",
+        "note",
+        `${bucket.demand_quantity} unit${bucket.demand_quantity === 1 ? "" : "s"} of pooled demand · ` +
+          `${bucket.suppliers.length} plausible supplier${bucket.suppliers.length === 1 ? "" : "s"}`,
+      ),
+    );
+    for (const supplier of bucket.suppliers) {
+      const row = el("div", "supplier");
+      const left = el("div");
+      left.append(el("div", "nm", supplier.name));
+      if (supplier.sources.length) {
+        const link = el("a", null, sourceLabel(supplier.sources[0]));
+        link.href = supplier.sources[0];
+        link.target = "_blank";
+        link.rel = "noreferrer";
+        left.append(link);
+      }
+      row.append(left);
+      row.append(el("span", "kind", supplier.type.replace("_", " ")));
+      card.append(row);
     }
-    item.append(what);
-    list.append(item);
+    host.append(card);
+  }
+  if (!host.childElementCount) {
+    const card = el("div", "card");
+    card.append(el("p", "empty", "No supplier was found for these groups."));
+    host.append(card);
+  }
+}
+
+function renderResearch(research) {
+  const host = $("research");
+  host.replaceChildren();
+
+  for (const bucket of research) {
+    const block = el("div", "card");
+    block.append(el("h3", null, bucket.label));
+
+    const qualified = bucket.candidates.filter((c) => c.verdict !== "rejected").length;
+    block.append(
+      el(
+        "p",
+        "note",
+        `${bucket.candidates.length} candidates researched · ${qualified} fit the group`,
+      ),
+    );
+
+    if (bucket.queries.length) {
+      block.append(el("p", "querylabel", "What the agent asked the web"));
+      block.append(el("div", "query", bucket.queries[bucket.queries.length - 1]));
+    }
+
+    const fits = bucket.candidates.filter((c) => c.verdict !== "rejected");
+    const rejected = bucket.candidates.filter((c) => c.verdict === "rejected");
+
+    const grid = el("div", "grid");
+    for (const candidate of fits.length ? fits : rejected.slice(0, 3)) {
+      const card = productCard(candidate, bucket);
+      grid.append(card);
+    }
+    block.append(grid);
+
+    if (fits.length && rejected.length) {
+      const rest = el("div", "grid");
+      rest.hidden = true;
+      for (const candidate of rejected) rest.append(productCard(candidate, bucket));
+      const toggle = el(
+        "button",
+        "more",
+        `Show ${rejected.length} candidate${rejected.length === 1 ? "" : "s"} that did not fit`,
+      );
+      toggle.addEventListener("click", () => {
+        rest.hidden = !rest.hidden;
+        toggle.textContent = rest.hidden
+          ? `Show ${rejected.length} candidate${rejected.length === 1 ? "" : "s"} that did not fit`
+          : "Hide the ones that did not fit";
+      });
+      block.append(toggle);
+      block.append(rest);
+    }
+
+    host.append(block);
   }
 }
 
@@ -163,33 +344,10 @@ function renderWarnings(warnings) {
   const host = $("warnings");
   host.replaceChildren();
   if (!warnings.length) return;
-  const banner = el("div", "banner");
-  banner.append(el("strong", null, "Notes from the agents: "));
-  banner.append(document.createTextNode(warnings.join(" · ")));
-  host.append(banner);
+  host.append(el("div", "banner", warnings.join(" · ")));
 }
 
-function render(result, customerCount) {
-  $("n-customers").textContent = customerCount;
-  $("n-groups").textContent = result.groups.length;
-  $("n-largest").textContent = result.groups.reduce((max, g) => Math.max(max, g.size), 0);
-  $("n-engine").textContent = result.engine === "deterministic" ? "rules" : result.engine;
-
-  renderWarnings(result.warnings ?? []);
-
-  const host = $("buckets");
-  host.replaceChildren();
-  const ordered = [...result.groups].sort((a, b) => b.size - a.size);
-  for (const group of ordered) host.append(renderBucket(group));
-
-  renderParsed(result.parsed ?? []);
-  renderTrace(result.trace ?? []);
-  $("results").hidden = false;
-}
-
-/* -------------------------------------------------------------------------- */
-/* Wiring                                                                      */
-/* -------------------------------------------------------------------------- */
+/* --------------------------------------------------------------- wiring -- */
 
 function showError(message) {
   const box = $("err");
@@ -197,49 +355,73 @@ function showError(message) {
   box.hidden = false;
 }
 
-function clearError() {
-  $("err").hidden = true;
-}
-
 $("sample").addEventListener("click", () => {
   $("input").value = JSON.stringify(EXAMPLE, null, 2);
-  clearError();
+  $("err").hidden = true;
 });
 
-$("clear").addEventListener("click", () => {
-  $("input").value = "";
-  $("results").hidden = true;
-  clearError();
-});
-
-$("run").addEventListener("click", async () => {
-  clearError();
-  const button = $("run");
-  const status = $("status");
-  let users;
+$("go1").addEventListener("click", async () => {
+  $("err").hidden = true;
+  let input;
   try {
-    users = parseInput($("input").value);
+    input = parseInput($("input").value);
   } catch (error) {
     showError(error.message);
     return;
   }
 
-  const count = Array.isArray(users) ? users.length : Object.keys(users).length;
+  const button = $("go1");
+  const live = $("live").checked;
   button.disabled = true;
-  status.textContent = `Reading ${count} request${count === 1 ? "" : "s"}…`;
   const started = performance.now();
 
+  // Live web research takes the better part of a minute, so say what is happening
+  // rather than showing a spinner that means nothing.
+  const stages = live
+    ? ["Reading the requests", "Grouping compatible demand", "Searching the live web", "Judging every candidate", "Looking for suppliers"]
+    : ["Reading the requests", "Grouping compatible demand", "Checking the catalogue"];
+  let stage = 0;
+  const setStage = () => {
+    button.replaceChildren(el("span", "spin"), document.createTextNode(` ${stages[stage]}…`));
+  };
+  setStage();
+  const ticker = setInterval(() => {
+    stage = Math.min(stage + 1, stages.length - 1);
+    setStage();
+  }, live ? 9000 : 400);
+
   try {
-    const result = await runAgents(users);
-    render(result, count);
-    status.textContent = `Grouped in ${Math.round(performance.now() - started)} ms`;
+    data = await research(input.users, live);
+    const elapsed = Math.round(performance.now() - started);
+
+    countUp($("n-read"), data.parsed.length);
+    renderUnderstood(data.parsed);
+    renderWarnings(data.warnings ?? []);
+    renderGroups(data.groups);
+    renderResearch(data.research ?? []);
+    renderSuppliers(data.research ?? []);
+    countUp($("n-groups"), data.groups.length);
+    $("provider-note").textContent =
+      data.provider === "linkup"
+        ? "Searched the live web with Linkup. Every candidate keeps the source it came from."
+        : "Searched the local demo catalogue. Turn on “search the live web with Linkup” to hit the real web.";
+    $("timing").textContent = `${input.count} requests → ${data.groups.length} groups in ${elapsed} ms`;
+
+    showStep(2);
   } catch (error) {
     showError(error.message);
-    status.textContent = "";
   } finally {
+    clearInterval(ticker);
     button.disabled = false;
+    button.textContent = "Read the requests";
   }
 });
 
-// Start with the example in place, so the page is never a blank prompt.
+$("go2").addEventListener("click", () => showStep(3));
+$("go3").addEventListener("click", () => showStep(4));
+$("go4").addEventListener("click", () => showStep(5));
+for (const button of document.querySelectorAll("#restart")) {
+  button.addEventListener("click", () => showStep(1));
+}
+
 $("input").value = JSON.stringify(EXAMPLE, null, 2);
