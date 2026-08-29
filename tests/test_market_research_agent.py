@@ -321,3 +321,47 @@ async def test_agent_researches_the_real_web_with_linkup():
 
     assert result.metrics["research_provider"] == "linkup"
     assert result.metrics["research_calls"] > 0
+
+
+# --------------------------------------------------------------------------- #
+# A second category end to end (the demand front door runs on wearables)
+# --------------------------------------------------------------------------- #
+RING_SCENARIO = {
+    "scenario_name": "smart rings",
+    "market": "SE",
+    "currency": "EUR",
+    "users": {
+        "anna": "I want a smart ring that tracks my sleep and HRV. No monthly subscription. Under €300.",
+        "ben": "Looking for a sleep tracking ring, works with my iPhone, at least a week of battery. Max €320.",
+        "cara": "A ring for sleep and recovery, I refuse to pay a subscription. Around €280.",
+        "eva": "Fitness band with GPS and heart rate for running, waterproof, around €200.",
+    },
+}
+
+
+async def test_agent_handles_a_second_category_end_to_end(settings, config):
+    ctx = make_context(settings, config)
+    _, intents, result = await ingest_and_research(ctx, RING_SCENARIO)
+
+    assert {i.category for i in intents} == {"wearable"}
+
+    rings = next(b for b in result.buckets if "anna" in b.member_user_ids)
+    assert set(rings.member_user_ids) == {"anna", "ben", "cara"}
+    # The label is user-facing on a demand front door.
+    assert "subscription-free" in rings.label and "ring" in rings.label
+
+    binding = {c.key for c in rings.shared_hard_constraints}
+    assert {"sensors.sleep_tracking", "wearable.subscription_required"} <= binding
+
+    best = result.best_match(rings.bucket_id)
+    assert best is not None
+    winner = next(p for p in result.products if p.product_id == best.product_id)
+    assert winner.attributes["wearable.subscription_required"] is False
+
+    # A subscription-required product is rejected for exactly that reason.
+    rejected = {
+        m.product_name: m.rejection_reasons
+        for m in result.matches
+        if m.bucket_id == rings.bucket_id and m.classification == MatchClassification.REJECTED
+    }
+    assert any("subscription" in " ".join(reasons) for reasons in rejected.values())

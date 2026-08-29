@@ -1,0 +1,12 @@
+{
+  "scenario_name": "BuyerPact demand front door — smart rings",
+  "market": "SE",
+  "currency": "EUR",
+  "users": {
+    "anna": "I want a smart ring that tracks my sleep and HRV. No monthly subscription please. Under €300.",
+    "ben": "Looking for a sleep tracking ring, works with my iPhone, at least a week of battery. Max €320.",
+    "cara": "A ring for sleep and recovery, I refuse to pay a subscription. Around €280.",
+    "dmitri": "I want the Oura ring, sleep and temperature tracking, up to €380.",
+    "eva": "Fitness band with GPS and heart rate for running, waterproof, around €200."
+  }
+}

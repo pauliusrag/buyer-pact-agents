@@ -15,7 +15,8 @@ from decimal import Decimal
 
 from sye.config import DemoConfig
 from sye.domain.models import DemandBucket, EvidenceSource, ProductCandidate
-from sye.integrations.linkup_client import ATTRIBUTE_HINT, ResearchClient, ResearchError
+from sye.domain.vocabulary import attribute_hint, category_noun
+from sye.integrations.linkup_client import ResearchClient, ResearchError
 from sye.services.constraints import describe
 
 
@@ -53,7 +54,7 @@ def build_query(
 
     preferred = "none" if broadened or not soft else "; ".join(soft)
     return (
-        f"Find {max_results} computer {bucket.category}s currently sold in market "
+        f"Find {max_results} {category_noun(bucket.category)}s currently sold in market "
         f"{config.market} that satisfy ALL of: {'; '.join(hard) if hard else 'no hard limits'}. "
         f"Target price {price}, aggregated order of {bucket.demand_quantity} units. "
         f"Preferred but not required: {preferred}. "
@@ -62,7 +63,7 @@ def build_query(
         f"Always report normal_market_price as a number in {bucket.currency} and set "
         f"currency to '{bucket.currency}'; convert if the listing is in another currency, "
         f"and omit the product rather than guessing if no price is available. "
-        f"{ATTRIBUTE_HINT}."
+        f"{attribute_hint(bucket.category)}."
     )
 
 

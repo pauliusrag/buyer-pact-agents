@@ -25,7 +25,7 @@ from sye.domain.models import (
     RequirementConstraint,
     UserIntent,
 )
-from sye.domain.vocabulary import human_label, resolution_label
+from sye.domain.vocabulary import CATEGORY_WEARABLE, human_label, resolution_label
 from sye.services.constraints import comparable, describe, merge_hard_constraints
 
 JudgeFn = Callable[["BucketDraft", UserIntent, "JoinAssessment"], Awaitable[bool | None]]
@@ -152,11 +152,15 @@ _BASELINE: dict[str, float] = {
     "display.size_in": 24.0,
     "display.refresh_rate_hz": 75.0,
     "display.resolution": float(1920 * 1080),
+    "wearable.battery_days": 5.0,
+    "wearable.water_resistance_atm": 5.0,
 }
 _STRICTNESS_FACTOR: dict[str, float] = {
     "display.size_in": 1.5,
     "display.refresh_rate_hz": 0.5,
     "display.resolution": 0.4,
+    "wearable.battery_days": 0.5,
+    "wearable.water_resistance_atm": 0.3,
 }
 _BOOLEAN_COST: dict[str, float] = {
     "connectivity.usb_c_power_delivery": 0.30,
@@ -166,6 +170,16 @@ _BOOLEAN_COST: dict[str, float] = {
     "adaptive_sync.gsync": 0.40,
     "display.curved": 0.30,
     "display.hdr": 0.35,
+    "wearable.subscription_required": 0.35,
+    "sensors.ecg": 0.45,
+    "sensors.gps": 0.45,
+    "sensors.temperature": 0.3,
+    "sensors.spo2": 0.3,
+    "sensors.sleep_tracking": 0.2,
+    "sensors.heart_rate": 0.2,
+    "material.titanium": 0.35,
+    "compat.ios": 0.2,
+    "compat.android": 0.2,
 }
 _DEFAULT_INHERIT_COST = 0.25
 
@@ -421,8 +435,26 @@ def bucket_label(
     ceiling: Decimal | None,
     currency: str,
 ) -> str:
-    """Deterministic, human-readable bucket name."""
+    """Deterministic, human-readable bucket name.
+
+    This is user-facing — on a demand front door it is what a person is told they
+    joined — so it names the requirements that actually define the group.
+    """
     by_key = {c.key: c for c in hard}
+    parts = (
+        _wearable_label_parts(by_key)
+        if category == CATEGORY_WEARABLE
+        else _monitor_label_parts(by_key)
+    )
+    noun = category
+    if parts and category == CATEGORY_WEARABLE and parts[-1] in ("ring", "watch", "band"):
+        noun = parts.pop()
+    label = " ".join(parts) if parts else "flexible"
+    suffix = f" ≤ {_num(ceiling)} {currency}" if ceiling is not None else ""
+    return f"{label} {noun}s{suffix}"
+
+
+def _monitor_label_parts(by_key: dict[str, RequirementConstraint]) -> list[str]:
     parts: list[str] = []
     size = by_key.get("display.size_in")
     if size is not None and size.operator == ConstraintOperator.GTE:
@@ -439,9 +471,31 @@ def bucket_label(
         parts.append("USB-C")
     if by_key.get("adaptive_sync.freesync") or by_key.get("adaptive_sync.gsync"):
         parts.append("adaptive sync")
-    label = " ".join(parts) if parts else "flexible"
-    suffix = f" ≤ {_num(ceiling)} {currency}" if ceiling is not None else ""
-    return f"{label} {category}s{suffix}"
+    return parts
+
+
+def _wearable_label_parts(by_key: dict[str, RequirementConstraint]) -> list[str]:
+    parts: list[str] = []
+    subscription = by_key.get("wearable.subscription_required")
+    if subscription is not None and not subscription.value:
+        parts.append("subscription-free")
+    if by_key.get("sensors.sleep_tracking"):
+        parts.append("sleep-tracking")
+    if by_key.get("sensors.gps"):
+        parts.append("GPS")
+    if by_key.get("sensors.ecg"):
+        parts.append("ECG")
+    battery = by_key.get("wearable.battery_days")
+    if battery is not None and battery.operator == ConstraintOperator.GTE:
+        parts.append(f"{_num(battery.value)}-day battery")
+    if by_key.get("material.titanium"):
+        parts.append("titanium")
+    form = by_key.get("wearable.form_factor")
+    if form is not None:
+        # The form factor pluralises the label ("sleep-tracking rings"), so it is
+        # handled by the caller's category suffix instead of repeated here.
+        parts.append(str(form.value))
+    return parts
 
 
 def _num(value: Any) -> str:

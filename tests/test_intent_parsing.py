@@ -152,3 +152,41 @@ async def test_llm_failure_falls_back_to_heuristics_with_a_warning():
         "display.resolution",
         "connectivity.usb_c_power_delivery",
     }
+
+
+# --------------------------------------------------------------------------- #
+# Wearables — a second category, to prove the architecture is category-generic
+# --------------------------------------------------------------------------- #
+def test_wearable_requests_are_detected_and_parsed():
+    extraction = parse_prompt(
+        "I want a smart ring that tracks my sleep and HRV. No monthly subscription. Under €300."
+    )
+    assert extraction.category == "wearable"
+    parsed = keys(extraction)
+    assert parsed["wearable.form_factor"].value == "ring"
+    assert parsed["sensors.sleep_tracking"].value is True
+    assert parsed["sensors.heart_rate"].value is True
+    assert parsed["wearable.subscription_required"].value is False
+    assert parsed["wearable.subscription_required"].importance == Importance.HARD
+    assert extraction.max_budget == Decimal("300")
+
+
+def test_battery_life_in_weeks_is_normalised_to_days():
+    parsed = keys(parse_prompt("A sleep tracking ring with at least a week of battery, max €320"))
+    assert parsed["wearable.battery_days"].value == 7
+    assert parsed["wearable.battery_days"].operator == ConstraintOperator.GTE
+
+
+def test_phone_compatibility_and_water_resistance():
+    parsed = keys(
+        parse_prompt("Fitness band with GPS and heart rate for my iPhone, waterproof, around €200")
+    )
+    assert parsed["compat.ios"].value is True
+    assert parsed["sensors.gps"].value is True
+    assert parsed["wearable.water_resistance_atm"].importance == Importance.SOFT
+
+
+def test_monitor_requests_are_unaffected_by_the_wearable_vocabulary():
+    extraction = parse_prompt("27 inch 1440p monitor with USB-C charging, under €320")
+    assert extraction.category == "monitor"
+    assert "wearable.form_factor" not in keys(extraction)

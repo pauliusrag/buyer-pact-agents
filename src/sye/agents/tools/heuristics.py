@@ -41,6 +41,22 @@ BRANDS = (
 
 CATEGORY_HINTS: dict[str, tuple[str, ...]] = {
     "monitor": ("monitor", "display", "screen", "curved screen"),
+    "wearable": (
+        "smart ring",
+        "smartring",
+        "oura",
+        "whoop",
+        "fitness tracker",
+        "activity tracker",
+        "sleep tracker",
+        "smartwatch",
+        "smart watch",
+        "wearable",
+        "fitness band",
+        "garmin",
+        "fitbit",
+        "apple watch",
+    ),
     "laptop": ("laptop", "notebook", "macbook air", "macbook pro"),
     "keyboard": ("keyboard",),
     "headphones": ("headphones", "headset", "earbuds"),
@@ -114,6 +130,19 @@ BUDGET_TARGET_PATTERNS = (
 )
 TARGET_TO_MAX_FACTOR = Decimal("1.15")
 
+_WORD_NUMBERS = {
+    "a": 1,
+    "an": 1,
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "ten": 10,
+}
+
 
 def _to_decimal(raw: str) -> Decimal | None:
     cleaned = raw.replace(" ", "")
@@ -165,6 +194,14 @@ def _operator_for(text: str, start: int, end: int) -> ConstraintOperator:
     return ConstraintOperator.GTE
 
 
+WEARABLE_SIGNALS = re.compile(
+    r"\bsmart ?ring\b|\boura\b|\bwhoop\b|\bsmart ?watch\b|\bwearable\b"
+    r"|\bfitness (?:tracker|band)\b|\bactivity tracker\b|\bsleep tracker\b"
+    r"|\bfitbit\b|\bgarmin\b|\bapple watch\b"
+    r"|\bring\b(?=.*(?:sleep|hrv|heart|recovery|battery|wear|finger|size))"
+)
+"""Evidence that the request is about a wearable rather than a display."""
+
 MONITOR_SIGNALS = re.compile(
     r"\bmonitor\b|\bdisplay\b|\bscreen\b|\d{2}\s*(?:-|\s)?(?:inch|inches|\")"
     r"|1440p|1080p|2160p|\b4k\b|\bqhd\b|\buhd\b|\bfhd\b|\d{2,3}\s*hz"
@@ -184,7 +221,10 @@ def detect_category(text: str) -> tuple[str, float]:
         if hits:
             scores[category] = hits
 
+    wearable_signals = len(WEARABLE_SIGNALS.findall(text))
     monitor_signals = len(MONITOR_SIGNALS.findall(text))
+    if wearable_signals and wearable_signals >= monitor_signals:
+        return "wearable", min(0.99, 0.7 + 0.07 * wearable_signals)
     if monitor_signals:
         return "monitor", min(0.99, 0.7 + 0.07 * monitor_signals)
     if not scores:
@@ -220,15 +260,10 @@ def _constraint(
     )
 
 
-def parse_prompt(prompt: str, *, currency: str = "EUR") -> IntentExtraction:
-    """Extract a structured intent from a free-text request."""
-    text = prompt.lower()
-    constraints: list[RequirementConstraint] = []
-    preferences: list[str] = []
-    questions: list[str] = []
-
-    category, category_confidence = detect_category(text)
-
+def _extract_monitor(
+    text: str, constraints: list[RequirementConstraint], questions: list[str]
+) -> None:
+    """Monitor-specific requirements (displays)."""
     # -- size ------------------------------------------------------------- #
     seen_size_operators: set[ConstraintOperator] = set()
     for match in re.finditer(r'(\d{2}(?:[.,]\d)?)\s*(?:-|\s)?(?:inch|inches|"|”|in\b|-ish)', text):
@@ -436,6 +471,171 @@ def parse_prompt(prompt: str, *, currency: str = "EUR") -> IntentExtraction:
                     weight=0.5,
                 )
             )
+
+
+def _extract_wearable(text: str, constraints: list[RequirementConstraint]) -> None:
+    """Wearable-specific requirements (rings, watches, bands).
+
+    The category-generic machinery — budgets, brands, quantity, timing — is shared;
+    only the attribute vocabulary differs per category.
+    """
+    # form factor
+    for pattern, value in (
+        (r"smart ?ring|\bring\b", "ring"),
+        (r"smart ?watch|apple watch|\bwatch\b", "watch"),
+        (r"fitness band|\bband\b|wristband", "band"),
+    ):
+        match = re.search(pattern, text)
+        if match:
+            window = _window(text, match.start(), before=20, after=30)
+            constraints.append(
+                _constraint(
+                    "wearable.form_factor",
+                    ConstraintOperator.EQ,
+                    value,
+                    importance=_importance_for(window),
+                    source_text=window,
+                    confidence=0.9,
+                )
+            )
+            break
+
+    # sensors and features
+    feature_patterns = (
+        (
+            r"sleep (?:tracking|track|score|staging)|track(?:s|ing)? my sleep",
+            "sensors.sleep_tracking",
+            0.92,
+        ),
+        (r"heart rate|\bhr\b|hrv|pulse", "sensors.heart_rate", 0.9),
+        (r"spo2|blood oxygen|oxygen saturation", "sensors.spo2", 0.9),
+        (r"temperature|body temp|skin temp", "sensors.temperature", 0.88),
+        (r"\becg\b|\bekg\b|atrial", "sensors.ecg", 0.9),
+        (r"\bgps\b|route tracking|track my runs", "sensors.gps", 0.9),
+        (r"\bnfc\b|contactless pay|tap to pay", "connectivity.nfc", 0.85),
+        (r"steps|activity tracking|workout tracking|calories", "sensors.activity_tracking", 0.85),
+        (r"titanium", "material.titanium", 0.85),
+    )
+    for pattern, key, confidence in feature_patterns:
+        match = re.search(pattern, text)
+        if not match:
+            continue
+        window = _window(text, match.start(), before=25, after=30)
+        constraints.append(
+            _constraint(
+                key,
+                ConstraintOperator.BOOLEAN,
+                True,
+                importance=_importance_for(window),
+                source_text=window,
+                confidence=confidence,
+            )
+        )
+
+    # subscriptions: "no subscription" is a hard requirement people feel strongly about
+    match = re.search(
+        r"(no|without|free of|don'?t want a?|hate|avoid)\s+(monthly\s+)?"
+        r"(subscription|membership|monthly fee)",
+        text,
+    )
+    if match:
+        window = _window(text, match.start(), before=10, after=40)
+        constraints.append(
+            _constraint(
+                "wearable.subscription_required",
+                ConstraintOperator.BOOLEAN,
+                False,
+                importance=Importance.HARD,
+                source_text=window,
+                confidence=0.93,
+            )
+        )
+
+    # battery life — only when the duration is actually about the battery, and
+    # accepting worded quantities ("a week", "two days").
+    for match in re.finditer(
+        r"(\d{1,2}|a|an|one|two|three|four|five|six|seven|ten)\s*(?:\+|plus)?\s*(?:-|\s)?"
+        r"(day|days|week|weeks)",
+        text,
+    ):
+        window = _window(text, match.start(), before=30, after=35)
+        if not re.search(r"batter|charge|last|between charges", window):
+            continue
+        raw = match.group(1)
+        value = _WORD_NUMBERS.get(raw, None)
+        if value is None:
+            try:
+                value = int(raw)
+            except ValueError:
+                continue
+        if "week" in match.group(2):
+            value *= 7
+        if not (1 <= value <= 60):
+            continue
+        constraints.append(
+            _constraint(
+                "wearable.battery_days",
+                _operator_for(text, match.start(), match.end()),
+                value,
+                importance=_importance_for(window),
+                source_text=window,
+                confidence=0.85,
+                unit="days",
+            )
+        )
+        break
+
+    # water resistance
+    match = re.search(r"(\d{1,3})\s*atm|waterproof|water[- ]resistant|swim", text)
+    if match:
+        atm = int(match.group(1)) if match.group(1) else 5
+        window = _window(text, match.start(), before=20, after=25)
+        constraints.append(
+            _constraint(
+                "wearable.water_resistance_atm",
+                ConstraintOperator.GTE,
+                atm,
+                importance=_importance_for(window, default=Importance.SOFT),
+                source_text=window,
+                confidence=0.8,
+                unit="ATM",
+                weight=0.7,
+            )
+        )
+
+    # phone compatibility
+    for pattern, key in (
+        (r"iphone|\bios\b|apple", "compat.ios"),
+        (r"android|samsung galaxy|pixel", "compat.android"),
+    ):
+        match = re.search(pattern, text)
+        if match:
+            window = _window(text, match.start(), before=20, after=25)
+            constraints.append(
+                _constraint(
+                    key,
+                    ConstraintOperator.BOOLEAN,
+                    True,
+                    importance=_importance_for(window),
+                    source_text=window,
+                    confidence=0.85,
+                )
+            )
+
+
+def parse_prompt(prompt: str, *, currency: str = "EUR") -> IntentExtraction:
+    """Extract a structured intent from a free-text request."""
+    text = prompt.lower()
+    constraints: list[RequirementConstraint] = []
+    preferences: list[str] = []
+    questions: list[str] = []
+
+    category, category_confidence = detect_category(text)
+
+    if category == "wearable":
+        _extract_wearable(text, constraints)
+    else:
+        _extract_monitor(text, constraints, questions)
 
     # -- budget ------------------------------------------------------------ #
     max_budget: Decimal | None = None

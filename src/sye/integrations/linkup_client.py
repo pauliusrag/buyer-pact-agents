@@ -33,6 +33,7 @@ from sye.domain.models import (
     SupplierCandidate,
     SupplierDiscoveryList,
 )
+from sye.domain.vocabulary import MONITOR_ATTRIBUTE_HINT, attribute_hint
 from sye.observability.logging import get_logger
 
 logger = get_logger("sye.linkup")
@@ -106,21 +107,13 @@ def _build_product(
     )
 
 
+ATTRIBUTE_HINT = MONITOR_ATTRIBUTE_HINT  # backwards-compatible alias
+
 PRODUCT_SYSTEM_HINT = (
     "You are a product research assistant. Return real, currently sold computer "
     "monitors that match the request. Use the attribute keys exactly as named. "
     "Prices must be the normal retail price in the requested currency. Never invent "
     "a product that does not exist."
-)
-
-ATTRIBUTE_HINT = (
-    "attributes keys to use when known: display.size_in (number), display.resolution "
-    "('2560x1440'), display.refresh_rate_hz (number), display.panel_type ('IPS'), "
-    "display.curved (bool), display.hdr (bool), connectivity.hdmi (bool), "
-    "connectivity.displayport (bool), connectivity.usb_c (bool), "
-    "connectivity.usb_c_power_delivery (bool), connectivity.thunderbolt (bool), "
-    "adaptive_sync.freesync (bool), adaptive_sync.gsync (bool), "
-    "ergonomics.height_adjustable (bool), ergonomics.vesa (bool)"
 )
 
 
@@ -283,10 +276,9 @@ class LinkupResearchClient:
     async def verify_product(self, product: ProductCandidate, *, run_id: str) -> ProductCandidate:
         """Second pass: confirm the technical specs of a finalist from another source."""
         query = (
-            f"Full technical specification of the {product.canonical_name} monitor: "
-            "screen size in inches, native resolution, refresh rate, panel type, "
-            "USB-C power delivery, Thunderbolt, FreeSync/G-Sync, HDMI, DisplayPort. "
-            f"{ATTRIBUTE_HINT}"
+            f"Full technical specification and current retail price of the "
+            f"{product.canonical_name}, including every specification a buyer would "
+            f"compare. {attribute_hint(product.category)}."
         )
         response = await self._search(query=query, schema=ProductDiscoveryList, depth="deep")
         payload, sources = self._payload_and_sources(response)
@@ -400,8 +392,23 @@ class FixtureResearchClient:
         self.fixtures_dir = Path(fixtures_dir)
         self.seed = seed
         self.calls = 0
-        self._products = self._load("monitors.json")
+        self._products = self._load_catalogues()
         self._suppliers = self._load("suppliers.json")
+
+    def _load_catalogues(self) -> list[dict[str, Any]]:
+        """Every product catalogue in the fixtures directory, one file per category."""
+        rows: list[dict[str, Any]] = []
+        catalogues = sorted(
+            path.name for path in self.fixtures_dir.glob("*.json") if path.name != "suppliers.json"
+        )
+        if not catalogues:
+            raise ResearchError(
+                f"no offline catalogue found in {self.fixtures_dir}. Offline mode never "
+                "fabricates research data — restore the fixtures or run with --live."
+            )
+        for filename in catalogues:
+            rows.extend(self._load(filename))
+        return rows
 
     def _load(self, filename: str) -> list[dict[str, Any]]:
         path = self.fixtures_dir / filename
@@ -490,7 +497,11 @@ class FixtureResearchClient:
                 category=category,
                 run_id=run_id,
                 bucket_id=bucket_id,
-                sources=[self._fixture_source("monitors.json", row.get("canonical_name", "?"))],
+                sources=[
+                    self._fixture_source(
+                        f"{row.get('category', 'catalogue')}s.json", row.get("canonical_name", "?")
+                    )
+                ],
                 origin=DataOrigin.SYSTEM,
                 currency="EUR",
             )
