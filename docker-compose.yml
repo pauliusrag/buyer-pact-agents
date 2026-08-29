@@ -1,0 +1,20 @@
+# Lightweight local API container. The demo itself needs nothing but `uv run`.
+services:
+  api:
+    image: python:3.12-slim
+    working_dir: /app
+    command: >
+      sh -c "pip install --no-cache-dir uv &&
+             uv sync --frozen &&
+             uv run uvicorn sye.main:app --host 0.0.0.0 --port 8000"
+    ports:
+      - "8000:8000"
+    environment:
+      SYE_DB_URL: sqlite:////app/data/sye.db
+      SYE_DATA_DIR: /app/data
+      SYE_OFFLINE: "true"
+      SYE_CORS_ORIGINS: http://localhost:3000,http://localhost:5173
+      # ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # LINKUP_API_KEY: ${LINKUP_API_KEY:-}
+    volumes:
+      - .:/app

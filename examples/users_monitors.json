@@ -1,0 +1,31 @@
+{
+  "scenario_name": "Stockholm monitor demand demo",
+  "market": "SE",
+  "currency": "EUR",
+  "users": [
+    {
+      "user_id": "user_001",
+      "prompt": "I need a 27 inch monitor for my MacBook, ideally USB-C charging, under €300."
+    },
+    {
+      "user_id": "user_002",
+      "prompt": "Looking for at least 27 inches and 1440p. I mostly work from a laptop and can spend around €280."
+    },
+    {
+      "user_id": "user_003",
+      "prompt": "Need a QHD monitor with USB-C charging. Brand doesn't matter. Max €320."
+    },
+    {
+      "user_id": "user_004",
+      "prompt": "Monitor for the home office, minimum 27 inch and 1440p, height adjustable stand would be nice. Up to €300."
+    },
+    {
+      "user_id": "user_005",
+      "prompt": "I want a 32 inch 4K gaming display, at least 144Hz. Budget is €700."
+    },
+    {
+      "user_id": "user_006",
+      "prompt": "Looking for a 32 inch 4K screen for gaming and photo editing, 144Hz or better, I can go up to €750."
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.env
+data/*.db
+data/demo_runs/*/
+data/demo_runs/*.json
+!data/demo_runs/.gitkeep

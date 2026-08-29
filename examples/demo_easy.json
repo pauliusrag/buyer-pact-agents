@@ -1,0 +1,39 @@
+{
+  "scenario_name": "Demo: office and gaming demand in one run",
+  "market": "SE",
+  "currency": "EUR",
+  "users": [
+    {
+      "user_id": "user_001",
+      "prompt": "I use a MacBook Air and want a proper 27-ish inch desk monitor. One USB-C cable would be ideal and I'd rather stay below €300."
+    },
+    {
+      "user_id": "user_002",
+      "prompt": "Need something for coding, minimum 1440p. I don't care about brand. Around €250 would be perfect."
+    },
+    {
+      "user_id": "user_003",
+      "prompt": "My laptop only has USB-C ports, so I need a monitor that charges over USB-C. 27 inch, QHD, max €320."
+    },
+    {
+      "user_id": "user_004",
+      "prompt": "Home office upgrade: at least 27 inch, 1440p, height adjustable stand would be nice. I can pay up to €300."
+    },
+    {
+      "user_id": "user_005",
+      "prompt": "Anything 27 inch or bigger with a sharp picture for spreadsheets and documents. Around €280."
+    },
+    {
+      "user_id": "user_006",
+      "prompt": "I want a gaming monitor, 27 inch, 1440p, 165hz or better, FreeSync, max €450."
+    },
+    {
+      "user_id": "user_007",
+      "prompt": "Looking for a fast 27 inch 1440p gaming screen, at least 165Hz with adaptive sync. Budget €430."
+    },
+    {
+      "user_id": "user_008",
+      "prompt": "Competitive shooters mostly. 27 inch, QHD, 180Hz or more, FreeSync. I can spend €420."
+    }
+  ]
+}

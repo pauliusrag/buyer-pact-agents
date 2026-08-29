@@ -1,0 +1,35 @@
+{
+  "scenario_name": "Demo: edge cases and graceful degradation",
+  "market": "SE",
+  "currency": "EUR",
+  "users": [
+    {
+      "user_id": "edge_001",
+      "prompt": "A monitor. That's it really."
+    },
+    {
+      "user_id": "edge_002",
+      "prompt": "It must be at least 32 inches, but it also needs to be under 24 inches to fit my shelf. €250 max."
+    },
+    {
+      "user_id": "edge_003",
+      "prompt": "Hard limit €150 and it must be QHD with USB-C power delivery and 165Hz."
+    },
+    {
+      "user_id": "edge_004",
+      "prompt": "Only Dell. 27 inch 1440p with USB-C charging, up to €400."
+    },
+    {
+      "user_id": "edge_005",
+      "prompt": "27 inch 1440p with USB-C charging, up to €350, brand doesn't matter."
+    },
+    {
+      "user_id": "edge_006",
+      "prompt": "I'd like a mechanical keyboard, wireless, under €120."
+    },
+    {
+      "user_id": "edge_007",
+      "prompt": "8K 120Hz OLED under €200, must have Thunderbolt."
+    }
+  ]
+}

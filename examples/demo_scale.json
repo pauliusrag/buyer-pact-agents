@@ -1,0 +1,19 @@
+{
+  "scenario_name": "Demo: larger aggregated demand",
+  "market": "SE",
+  "currency": "EUR",
+  "users": [
+    {"user_id": "s_001", "prompt": "27 inch 1440p with USB-C charging for my MacBook, under €320."},
+    {"user_id": "s_002", "prompt": "At least 27 inch and QHD, I work from a laptop all day. Around €280."},
+    {"user_id": "s_003", "prompt": "Need a 1440p monitor with USB-C power delivery, max €300."},
+    {"user_id": "s_004", "prompt": "27 inch or larger, 1440p, height adjustable. Budget €310."},
+    {"user_id": "s_005", "prompt": "Office monitor, minimum 27 inch, sharp text, up to €290."},
+    {"user_id": "s_006", "prompt": "QHD screen with a USB-C dock built in, 27 inch, around €300."},
+    {"user_id": "s_007", "prompt": "Something 27 inch, 1440p, IPS panel, no more than €330."},
+    {"user_id": "s_008", "prompt": "I want a 27 inch 1440p gaming monitor, 165Hz minimum, FreeSync, max €440."},
+    {"user_id": "s_009", "prompt": "Fast 27 inch QHD gaming display, at least 180Hz, budget €450."},
+    {"user_id": "s_010", "prompt": "27 inch 1440p, 165hz or better, adaptive sync, up to €430."},
+    {"user_id": "s_011", "prompt": "32 inch 4K screen for photo editing, 144Hz would be nice, up to €800."},
+    {"user_id": "s_012", "prompt": "I want a 32 inch 4K display at 144Hz for gaming, budget €750."}
+  ]
+}

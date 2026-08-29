@@ -1,0 +1,63 @@
+[project]
+name = "sye-agent-mvp"
+version = "0.1.0"
+description = "SYE — agentic demand aggregation and collective-buying MVP (demand-first group buying)"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "python-dotenv>=1.0",
+    "httpx>=0.27",
+    "sqlalchemy>=2.0",
+    "rich>=13.7",
+    "langgraph>=0.2.50",
+    "langgraph-checkpoint-sqlite>=2.0.0",
+    "langchain-core>=0.3",
+    "langchain-anthropic>=0.3",
+    "linkup-sdk>=0.2.4",
+]
+
+[project.optional-dependencies]
+openai = ["langchain-openai>=0.2"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.2",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.6",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sye"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+# Some developer machines leak unrelated pytest plugins into the venv through
+# PYTHONPATH (e.g. a sourced ROS install). Block them so the suite is hermetic.
+addopts = "-q -p no:launch_testing -p no:launch_ros -p no:ament_lint -p no:ament_flake8 -p no:ament_pep257 -p no:ament_copyright -p no:ament_xmllint -m 'not live'"
+markers = [
+    "live: opt-in tests that hit real external APIs (deselected by default)",
+]
+# `live` tests are opt-in: run them with `uv run pytest -m live`.
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+# B008: FastAPI's Depends() in defaults is the documented idiom.
+# E501: long lines are already prevented by the formatter.
+# UP042: the domain enums are (str, Enum) by specification, which Pydantic and the
+#        JSON contract rely on; StrEnum would change str() semantics.
+ignore = ["B008", "E501", "UP042"]

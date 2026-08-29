@@ -1,0 +1,13 @@
+{
+  "mode": "demo",
+  "market": "SE",
+  "currency": "EUR",
+  "seed": 42,
+  "max_products_per_bucket": 6,
+  "max_suppliers_per_product": 3,
+  "max_negotiation_rounds": 2,
+  "max_linkup_calls": 20,
+  "campaign_duration_hours": 72,
+  "offline": true,
+  "write_snapshots": true
+}

@@ -1,0 +1,35 @@
+{
+  "scenario_name": "Mixed and awkward monitor requests",
+  "market": "SE",
+  "currency": "EUR",
+  "users": [
+    {
+      "user_id": "user_101",
+      "prompt": "I just need a new screen for my desk, nothing fancy."
+    },
+    {
+      "user_id": "user_102",
+      "prompt": "Must be at least 32 inches but it also has to fit a very small desk, so under 24 inches ideally. Max €200."
+    },
+    {
+      "user_id": "user_103",
+      "prompt": "Only Dell, nothing else. 27 inch 1440p with USB-C charging, up to €400."
+    },
+    {
+      "user_id": "user_104",
+      "prompt": "Hard limit of €150, and it has to be QHD with USB-C power delivery."
+    },
+    {
+      "user_id": "user_105",
+      "prompt": "I want a mechanical keyboard, ideally wireless, under €120."
+    },
+    {
+      "user_id": "user_106",
+      "prompt": "27 inch 1440p please, USB-C charging for my laptop, budget €330, brand doesn't matter."
+    },
+    {
+      "user_id": "user_107",
+      "prompt": "Something 27 inch or bigger with 1440p resolution. Around €300 works for me."
+    }
+  ]
+}

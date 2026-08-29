@@ -1,0 +1,38 @@
+[
+  {
+    "name": "Nordic Display Distribution AB",
+    "supplier_type": "distributor",
+    "website": "https://example-demo-suppliers.invalid/nordic-display",
+    "market": "SE"
+  },
+  {
+    "name": "Dustin Business",
+    "supplier_type": "retailer",
+    "website": "https://example-demo-suppliers.invalid/dustin-business",
+    "market": "SE"
+  },
+  {
+    "name": "Komplett Företag",
+    "supplier_type": "retailer",
+    "website": "https://example-demo-suppliers.invalid/komplett-foretag",
+    "market": "SE"
+  },
+  {
+    "name": "TPV Technology Nordics",
+    "supplier_type": "manufacturer",
+    "website": "https://example-demo-suppliers.invalid/tpv-nordics",
+    "market": "EU"
+  },
+  {
+    "name": "Also Nordic Distribution",
+    "supplier_type": "distributor",
+    "website": "https://example-demo-suppliers.invalid/also-nordic",
+    "market": "SE"
+  },
+  {
+    "name": "Proshop Business",
+    "supplier_type": "marketplace_seller",
+    "website": "https://example-demo-suppliers.invalid/proshop-business",
+    "market": "DK"
+  }
+]

@@ -1,0 +1,12 @@
+{
+  "scenario_name": "Named requests (mapping form)",
+  "market": "SE",
+  "currency": "EUR",
+  "users": {
+    "john doe": "I work from a laptop all day and want a 27 inch 1440p monitor that charges over USB-C. Under €320.",
+    "jane doe": "Looking for at least 27 inches, QHD, for spreadsheets and documents. Around €280.",
+    "sam patel": "Need a QHD screen with USB-C so I only need one cable to my MacBook. Max €300.",
+    "mia larsson": "Home office monitor, minimum 27 inch and 1440p, height adjustable stand would be nice. Up to €310.",
+    "otto berg": "I want a 27 inch 1440p gaming monitor, 165Hz or better with FreeSync. Budget €440."
+  }
+}
